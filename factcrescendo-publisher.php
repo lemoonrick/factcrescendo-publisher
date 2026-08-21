@@ -3,14 +3,15 @@
  * Plugin Name:       FactCrescendo Publisher
  * Plugin URI:        https://factcrescendo.com
  * Description:       Automates fact-check publishing. ACF fields, REST API, auto-injected Fact Card / Author Box / WhatsApp Banner, ClaimReview schema, and AI narration.
- * Version:           4.0.1
+ * Version:           4.1.0
  * Author:            FactCrescendo
  * License:           GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'FC_PUBLISHER_VERSION', '4.0.1' );
+define( 'FC_PUBLISHER_VERSION', '4.1.0' );
+define( 'FC_PUBLISHER_FILE', __FILE__ );
 define( 'FC_PUBLISHER_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FC_PUBLISHER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -22,6 +23,7 @@ require_once FC_PUBLISHER_DIR . 'includes/content-injection.php';
 require_once FC_PUBLISHER_DIR . 'includes/settings-page.php';
 require_once FC_PUBLISHER_DIR . 'includes/seo-schema.php';
 require_once FC_PUBLISHER_DIR . 'includes/audio-generator.php';
+require_once FC_PUBLISHER_DIR . 'includes/updater.php';
 
 // Flush rewrite rules the moment ACF activates, so fields register cleanly
 // regardless of install order (plugin first or ACF first — both work).
@@ -55,4 +57,5 @@ function fc_publisher_uninstall() {
     delete_option( 'fc_enable_audio' );
     delete_option( 'fc_elevenlabs_api_key' );
     delete_option( 'fc_elevenlabs_voice_id' );
+    delete_transient( 'fc_latest_release' );
 }
