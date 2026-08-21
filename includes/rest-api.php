@@ -4,12 +4,12 @@
  *
  * 1. Registers meta fields so they appear in the standard WP REST API
  *    response under /wp-json/wp/v2/posts/<id> → meta{}
- *    (ACF Free fallback — ACF Pro exposes these natively)
+ * 2. GET /wp-json/fc/v1/post/<id>      — single post, all fact-check + audio data
+ * 3. GET /wp-json/fc/v1/posts          — paginated list of fact-check posts
  *
- * 2. Adds a clean combined endpoint:
- *    GET /wp-json/fc/v1/post/<id>
- *    Returns all fact-check fields + stamp URL in one call.
- *    Useful for future dashboards or Google Docs publisher.
+ * All endpoints are read-only. Writing to any of these meta keys via the
+ * REST API requires edit_posts capability (see auth_callback below) —
+ * there is no public write path anywhere in this file.
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -21,10 +21,12 @@ add_action( 'init', 'fc_register_rest_meta' );
 
 function fc_register_rest_meta() {
     $fields = [
-        'fc_is_fact_check' => 'boolean',
-        'fc_rating'        => 'string',
-        'fc_claim'         => 'string',
-        'fc_fact'          => 'string',
+        'fc_is_fact_check'  => 'boolean',
+        'fc_rating'         => 'string',
+        'fc_claim'          => 'string',
+        'fc_fact'           => 'string',
+        'fc_audio_url'      => 'string',
+        'fc_audio_status'   => 'string',
     ];
 
     foreach ( $fields as $key => $type ) {
@@ -40,7 +42,7 @@ function fc_register_rest_meta() {
 }
 
 
-// ── Custom combined endpoint ─────────────────────────────────────────────────
+// ── Single post endpoint ─────────────────────────────────────────────────────
 
 add_action( 'rest_api_init', 'fc_register_custom_endpoint' );
 
@@ -77,10 +79,13 @@ function fc_rest_get_post( $request ) {
         'claim'         => get_field( 'fc_claim', $post_id ),
         'fact'          => get_field( 'fc_fact', $post_id ),
         'stamp_url'     => fc_get_stamp_url( $rating ),
+        'audio_url'     => get_post_meta( $post_id, 'fc_audio_url', true ) ?: null,
+        'audio_status'  => get_post_meta( $post_id, 'fc_audio_status', true ) ?: 'none',
     ] );
 }
 
-// ── Custom Bulk Endpoint (Collection) ────────────────────────────────────────
+
+// ── Bulk / collection endpoint ───────────────────────────────────────────────
 
 add_action( 'rest_api_init', 'fc_register_bulk_endpoint' );
 
@@ -89,19 +94,22 @@ function fc_register_bulk_endpoint() {
         'methods'             => 'GET',
         'callback'            => 'fc_rest_get_posts',
         'permission_callback' => '__return_true',
+        'args'                => [
+            'page' => [
+                'validate_callback' => fn( $p ) => is_numeric( $p ) && $p > 0,
+            ],
+        ],
     ] );
 }
 
 function fc_rest_get_posts( $request ) {
-    // Optional: Allow the app to pass a page number like ?page=2
-    $page = $request->get_param( 'page' ) ? (int) $request->get_param( 'page' ) : 1;
+    $page = $request->get_param( 'page' ) ? max( 1, (int) $request->get_param( 'page' ) ) : 1;
 
-    $args = [
+    $query = new WP_Query( [
         'post_type'      => 'post',
         'post_status'    => 'publish',
-        'posts_per_page' => 10, // How many to load at once
+        'posts_per_page' => 10,
         'paged'          => $page,
-        // Only fetch posts where the "Mark as Fact Check" toggle is ON
         'meta_query'     => [
             [
                 'key'     => 'fc_is_fact_check',
@@ -109,25 +117,28 @@ function fc_rest_get_posts( $request ) {
                 'compare' => '=',
             ],
         ],
-    ];
+    ] );
 
-    $query = new WP_Query( $args );
-    $data  = [];
-
+    $data = [];
     foreach ( $query->posts as $post ) {
         $rating = get_field( 'fc_rating', $post->ID );
-        
         $data[] = [
-            'id'            => $post->ID,
-            'title'         => get_the_title( $post->ID ),
-            'url'           => get_permalink( $post->ID ),
-            'rating'        => $rating,
-            'rating_label'  => fc_get_rating_label( $rating ),
-            'claim'         => get_field( 'fc_claim', $post->ID ),
-            'fact'          => get_field( 'fc_fact', $post->ID ),
-            'stamp_url'     => fc_get_stamp_url( $rating ),
+            'id'           => $post->ID,
+            'title'        => get_the_title( $post->ID ),
+            'url'          => get_permalink( $post->ID ),
+            'rating'       => $rating,
+            'rating_label' => fc_get_rating_label( $rating ),
+            'claim'        => get_field( 'fc_claim', $post->ID ),
+            'fact'         => get_field( 'fc_fact', $post->ID ),
+            'stamp_url'    => fc_get_stamp_url( $rating ),
+            'audio_url'    => get_post_meta( $post->ID, 'fc_audio_url', true ) ?: null,
         ];
     }
 
-    return rest_ensure_response( $data );
+    return rest_ensure_response( [
+        'page'        => $page,
+        'total_pages' => (int) $query->max_num_pages,
+        'total_posts' => (int) $query->found_posts,
+        'posts'       => $data,
+    ] );
 }
