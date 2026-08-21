@@ -42,6 +42,26 @@ function fc_register_rest_meta() {
 }
 
 
+// ── ACF availability ─────────────────────────────────────────────────────────
+/**
+ * These endpoints are public, so they must never fatal. If ACF is switched
+ * off — during an update, a plugin conflict, or by accident — get_field()
+ * no longer exists and every request here would return a 500 to the open
+ * internet. Answer with a clean 503 instead.
+ */
+function fc_acf_ready() {
+    return function_exists( 'get_field' );
+}
+
+function fc_acf_unavailable() {
+    return new WP_Error(
+        'fc_fields_unavailable',
+        'Fact check fields are unavailable on this site right now.',
+        [ 'status' => 503 ]
+    );
+}
+
+
 // ── Single post endpoint ─────────────────────────────────────────────────────
 
 add_action( 'rest_api_init', 'fc_register_custom_endpoint' );
@@ -66,6 +86,8 @@ function fc_rest_get_post( $request ) {
     if ( ! $post || $post->post_type !== 'post' || $post->post_status !== 'publish' ) {
         return new WP_Error( 'not_found', 'Post not found.', [ 'status' => 404 ] );
     }
+
+    if ( ! fc_acf_ready() ) return fc_acf_unavailable();
 
     $rating = get_field( 'fc_rating', $post_id );
 
@@ -103,6 +125,8 @@ function fc_register_bulk_endpoint() {
 }
 
 function fc_rest_get_posts( $request ) {
+    if ( ! fc_acf_ready() ) return fc_acf_unavailable();
+
     $page = $request->get_param( 'page' ) ? max( 1, (int) $request->get_param( 'page' ) ) : 1;
 
     $query = new WP_Query( [

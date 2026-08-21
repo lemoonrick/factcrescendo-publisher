@@ -24,6 +24,14 @@ function fc_inject_blocks( $content ) {
     $rating = get_field( 'fc_rating', $post_id );
     if ( empty( $rating ) ) return $content;
 
+    // Some themes and plugins run the_content more than once on a page
+    // (related-post boxes, preview widgets). Inject only the first time,
+    // otherwise the reader gets two fact cards and two audio players — and
+    // the duplicate IDs break the Share and Download buttons.
+    static $injected = [];
+    if ( isset( $injected[ $post_id ] ) ) return $content;
+    $injected[ $post_id ] = true;
+
     $title        = get_the_title( $post_id );
     $author_id    = get_post_field( 'post_author', $post_id );
     $author       = get_the_author_meta( 'display_name', $author_id );
@@ -358,7 +366,6 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
     $player_id = 'fc-a-' . $post_id;
     $body_id   = 'fc-article-body-' . $post_id;
     $audio_url = get_post_meta( $post_id, 'fc_audio_url', true );
-    $next      = fc_get_next_fact_check( $post_id );
 
     // Pass the site's language to the browser speech engine. Without a
     // correct lang tag (e.g. hi-IN, mr-IN), Hindi and Marathi text is read
@@ -402,15 +409,6 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
     }
     .fc-a-speed:hover { background: #eef1f5 !important; }
     .fc-article-body p.fc-reading { background: #f1f0ec; box-shadow: inset 3px 0 0 #94a3b8; border-radius: 2px; transition: background 0.3s ease; }
-    .fc-up-next {
-        display: none; align-items: center; gap: 10px; margin-top: 10px;
-        background: #fafafa !important; border: 1px solid #eee !important; border-radius: 10px; padding: 10px 14px; font-size: 13px;
-    }
-    .fc-up-next.fc-a-visible { display: flex; }
-    .fc-up-next-label { color: #94a3b8 !important; font-weight: 600; flex-shrink: 0; }
-    .fc-up-next a { color: #0f172a !important; font-weight: 600; text-decoration: none; }
-    .fc-up-next a:hover { text-decoration: underline; }
-
     .fc-a-mini {
         position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 9999; max-width: 420px; margin: 0 auto;
         background: #ffffff !important; color: #0f172a !important; border: 1px solid #e5e7eb !important;
@@ -432,8 +430,6 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
         .fc-a-speed { background: #0f172a !important; border-color: #334155 !important; color: #e2e8f0 !important; }
         .fc-a-speed:hover { background: #1a2536 !important; }
         .fc-article-body p.fc-reading { background: rgba(148,163,184,0.16); box-shadow: inset 3px 0 0 #64748b; }
-        .fc-up-next { background: #1e293b !important; border-color: #334155 !important; }
-        .fc-up-next a { color: #f1f5f9 !important; }
         .fc-a-mini { background: #1e293b !important; color: #f1f5f9 !important; border-color: #334155 !important; }
         .fc-a-mini-play { background: #0f172a !important; }
         .fc-a-mini-play svg path, .fc-a-mini-play svg rect { fill: #f1f5f9 !important; }
@@ -451,13 +447,6 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
             <div class="fc-a-track" role="slider" tabindex="0" aria-label="Seek"><div class="fc-a-track-line"><div class="fc-a-fill"></div></div></div>
             <button class="fc-a-speed" type="button" aria-label="Playback speed">1x</button>
         </div>
-
-        <?php if ( $next ) : ?>
-        <div class="fc-up-next" id="<?php echo esc_attr( $player_id ); ?>-next">
-            <span class="fc-up-next-label">Up next</span>
-            <a href="<?php echo esc_url( $next['url'] ); ?>"><?php echo esc_html( $next['title'] ); ?></a>
-        </div>
-        <?php endif; ?>
     </div>
 
     <div class="fc-a-mini" id="<?php echo esc_attr( $player_id ); ?>-mini">
@@ -494,7 +483,6 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
 
             var mini      = document.getElementById(<?php echo wp_json_encode( $player_id . '-mini' ); ?>);
             var miniBtn   = mini ? mini.querySelector('.fc-a-mini-play') : null;
-            var upNext    = document.getElementById(<?php echo wp_json_encode( $player_id . '-next' ); ?>);
 
             playBtn.innerHTML = ICON_PLAY;
             if (miniBtn) miniBtn.innerHTML = ICON_PLAY;
@@ -520,7 +508,6 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
             }
             function showMini() { if (mini) mini.classList.add('fc-a-visible'); }
             function hideMini() { if (mini) mini.classList.remove('fc-a-visible'); }
-            function showUpNext() { if (upNext) upNext.classList.add('fc-a-visible'); }
             function clearHighlight() { paras.forEach(function(p) { p.classList.remove('fc-reading'); }); }
             function highlightPara(i) {
                 clearHighlight();
@@ -600,7 +587,7 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
                         fill.style.width = pct + '%';
                         timeText.textContent = fmt(mediaEl.currentTime);
                     });
-                    mediaEl.addEventListener('ended', function() { setPlayingUI(false); hideMini(); showUpNext(); });
+                    mediaEl.addEventListener('ended', function() { setPlayingUI(false); hideMini(); });
                 }
                 mediaEl.playbackRate = speeds[speedIndex];
                 mediaEl.muted = muted;
@@ -626,7 +613,15 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
                 if (!text) return [];
                 // Split on sentence enders shared across our languages,
                 // including the Devanagari danda (। / ॥) used by Hindi/Marathi.
-                var sentences = text.split(/(?<=[.!?।॥])\s+/);
+                //
+                // Written WITHOUT a regex lookbehind on purpose. Safari below
+                // 16.4 (iOS 15 and older, still common on our readers' phones)
+                // treats a lookbehind as a syntax error at parse time, which
+                // kills this entire script before the try/catch can catch it —
+                // taking the whole player down with it. Marking the break with
+                // a null character and splitting on that does the same job and
+                // parses everywhere.
+                var sentences = text.replace(/([.!?।॥])\s+/g, '$1\u0000').split('\u0000');
                 var chunks = [];
                 sentences.forEach(function(sentence) {
                     if (sentence.length <= MAX_CHUNK) {
@@ -687,7 +682,7 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
                 }
                 if (list.length) {
                     list[list.length - 1].onend = function() {
-                        setPlayingUI(false); clearHighlight(); hideMini(); showUpNext();
+                        setPlayingUI(false); clearHighlight(); hideMini();
                         currentChunkIndex = -1;
                     };
                 }
@@ -771,39 +766,6 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
     return ob_get_clean();
 }
 
-
-/**
- * Finds the most recently published other fact-check post, used for the
- * "Up next" prompt shown once narration finishes. Returns null if none
- * exists — the prompt simply doesn't render in that case.
- */
-function fc_get_next_fact_check( $current_id ) {
-    $q = new WP_Query( [
-        'post_type'           => 'post',
-        'post_status'         => 'publish',
-        'posts_per_page'      => 1,
-        'post__not_in'        => [ $current_id ],
-        'orderby'             => 'date',
-        'order'               => 'DESC',
-        'no_found_rows'       => true,
-        'ignore_sticky_posts' => true,
-        'meta_query'          => [
-            [ 'key' => 'fc_is_fact_check', 'value' => '1', 'compare' => '=' ],
-        ],
-    ] );
-
-    $result = null;
-    if ( $q->have_posts() ) {
-        $q->the_post();
-        $result = [
-            'id'    => get_the_ID(),
-            'title' => get_the_title(),
-            'url'   => get_permalink(),
-        ];
-    }
-    wp_reset_postdata();
-    return $result;
-}
 
 // ── AUTHOR BOX HTML ─────────────────────────────────────────────────────────────
 function fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_label ) {
