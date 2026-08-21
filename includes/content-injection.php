@@ -24,14 +24,6 @@ function fc_inject_blocks( $content ) {
     $rating = get_field( 'fc_rating', $post_id );
     if ( empty( $rating ) ) return $content;
 
-    // Some themes and plugins run the_content more than once on a page
-    // (related-post boxes, preview widgets). Inject only the first time,
-    // otherwise the reader gets two fact cards and two audio players — and
-    // the duplicate IDs break the Share and Download buttons.
-    static $injected = [];
-    if ( isset( $injected[ $post_id ] ) ) return $content;
-    $injected[ $post_id ] = true;
-
     $title        = get_the_title( $post_id );
     $author_id    = get_post_field( 'post_author', $post_id );
     $author       = get_the_author_meta( 'display_name', $author_id );
