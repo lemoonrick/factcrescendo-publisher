@@ -1,14 +1,6 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-// 1. Properly enqueue the screenshot script ONLY on single posts
-add_action( 'wp_enqueue_scripts', 'fc_enqueue_fact_card_scripts' );
-function fc_enqueue_fact_card_scripts() {
-    if ( is_singular( 'post' ) ) {
-        wp_enqueue_script( 'html2canvas', 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', [], '1.4.1', true );
-    }
-}
-
 // 2. Inject the Blocks
 add_filter( 'the_content', 'fc_inject_blocks', 20 );
 function fc_inject_blocks( $content ) {
@@ -32,10 +24,9 @@ function fc_inject_blocks( $content ) {
     $rating_label = fc_get_rating_label( $rating );
     $claim        = get_field( 'fc_claim', $post_id );
     $fact         = get_field( 'fc_fact', $post_id );
-    $featured_img = get_the_post_thumbnail_url( $post_id, 'large' );
     $logo_url     = get_option( 'fc_logo_url', '' );
 
-    $fact_card    = fc_build_fact_card( $stamp_url, $rating_label, $claim, $fact, $featured_img, $logo_url );
+    $fact_card    = fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $logo_url );
     $author_box   = fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_label );
     $wa_banner    = fc_get_whatsapp_banner();
 
@@ -52,289 +43,136 @@ function fc_inject_blocks( $content ) {
     return $fact_card . $content . $author_box . $wa_banner;
 }
 
-// ── FACT CARD HTML ──────────────────────────────────────────────────────────────
-function fc_build_fact_card( $stamp_url, $rating_label, $claim, $fact, $featured_img, $logo_url ) {
+/**
+ * Three tones, matching how the site already colours its category tags:
+ * red for a flat falsehood, amber for the shades in between, green for
+ * the ratings that confirm something.
+ */
+function fc_rating_tone( $rating ) {
+    $r = strtolower( (string) $rating );
+    if ( in_array( $r, [ 'insight', 'news' ], true ) )   return 'true';
+    if ( in_array( $r, [ 'false', 'altered' ], true ) )  return 'false';
+    return 'warn';
+}
 
-    // Convert cross-origin images (stamp, featured, logo all live on
-    // factcrescendo.com) to inline base64 so html2canvas can read their
-    // pixels. Without this the canvas is "tainted" and those images drop
-    // out of the downloaded PNG — which is exactly why the stamp was
-    // missing from downloads. Results are cached so we don't re-fetch on
-    // every page load.
-    $stamp_data    = $stamp_url    ? fc_image_to_base64( $stamp_url )    : '';
-    $featured_data = $featured_img ? fc_image_to_base64( $featured_img ) : '';
-    $logo_data     = $logo_url     ? fc_image_to_base64( $logo_url )     : '';
+// ── FACT CARD ─────────────────────────────────────────────────────────────
+/**
+ * The featured image, full width of the content column, with a slim strip
+ * across the bottom carrying the claim and the finding.
+ *
+ * Deliberately plain: white card, blue border, one image, one strip. No
+ * screenshot export, no inlined base64 images, no social icons or phone
+ * number baked into the graphic. The strip is sized by its text, so it
+ * stays slim as long as the claim and fact are written tightly.
+ *
+ * Where this appears: the plugin adds it to the start of the article body,
+ * so the theme's title and byline always sit above it — with or without a
+ * byline, nothing here needs to change.
+ */
+function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $logo_url ) {
 
-    // Fall back to the live URL if a fetch failed, so the card still
-    // displays on-page even if the download can't include that image.
-    $stamp_src    = $stamp_data    ?: $stamp_url;
-    $featured_src = $featured_data ?: $featured_img;
-    $logo_src     = $logo_data     ?: $logo_url;
+    // Let WordPress emit the image so it comes with srcset — phones download
+    // a phone-sized file instead of the full-resolution original.
+    $img_html = get_the_post_thumbnail( $post_id, 'full', [
+        'class'         => 'fc-hero-img',
+        'loading'       => 'eager',        // it is the top of the article
+        'fetchpriority' => 'high',
+    ] );
+
+    $has_img = ( $img_html !== '' );
+    $claim   = trim( (string) $claim );
+    $fact    = trim( (string) $fact );
+
+    // Nothing to show at all — don't render an empty bordered box.
+    if ( ! $has_img && $claim === '' && $fact === '' ) return '';
+
+    $tone = fc_rating_tone( $rating );
 
     ob_start();
     ?>
     <style>
-    .fc-card-wrapper { width: 100%; margin: 0 0 12px; display: flex; justify-content: flex-start; }
-    .fc-export-card {
-        width: 100%; max-width: 900px; background-color: #f3f4f6;
-        display: flex; flex-wrap: wrap; padding: 30px; gap: 30px;
-        box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif;
-        border: 1px solid #e5e7eb; border-radius: 8px;
+    /* Light card, tuned to the site: white ground, brand-red accents on the
+       verdict, small square-ish pills like the category tags on the homepage.
+       font-family:inherit means the card picks up whichever typeface the
+       theme is already using, so it never looks bolted on. */
+    .fc-hero {
+        /* No border for now. To switch one on later, the only change needed
+           here is: border:1.5px solid var(--fc-accent); */
+        --fc-accent:#e31b23;
+        background:#ffffff; border-radius:8px;
+        overflow:hidden; margin:0 0 26px; font-family:inherit;
     }
-    .fc-left-col { flex: 1 1 300px; display: flex; flex-direction: column; gap: 20px; }
-    .fc-card-logo { height: 45px; object-fit: contain; margin: 0 auto; display: block; }
-    .fc-image-container {
-        width: 100%; aspect-ratio: 4/3; position: relative;
-        border-radius: 4px; overflow: hidden;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1); background: #ddd;
-    }
-    .fc-featured-img { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
-    .fc-stamp-overlay {
-        position: absolute; bottom: 2px; left: 2px; width: 85px;
-        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
-    }
-    .fc-card-footer {
-        display: flex; justify-content: space-between; align-items: flex-end;
-        border-bottom: 2px solid #e31b23; padding-bottom: 16px; flex-wrap: wrap; gap: 10px;
-    }
-    .fc-contact-info { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .fc-contact-badge {
-        background: #e31b23; color: #fff; font-size: 11px; font-weight: bold;
-        padding: 4px 12px; border-radius: 12px; display: inline-flex; align-items: center; gap: 6px;
-    }
-    .fc-contact-badge svg { fill: #25D366; background: #fff; border-radius: 50%; padding: 2px; }
-    .fc-contact-number { font-size: 20px; font-weight: 900; color: #000; margin: 0; line-height: 1; }
-    .fc-social-section { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-    .fc-social-badge {
-        background: #e31b23; color: #fff; font-size: 11px; font-weight: bold;
-        padding: 4px 16px; border-radius: 12px; text-align: center;
-    }
-    .fc-social-icons { display: flex; gap: 6px; line-height: 1; }
-    .fc-social-icons svg { width: 22px; height: 22px; }
-    .fc-result-row { display: flex; align-items: center; gap: 15px; margin-top: auto; }
-    .fc-result-btn {
-        background: #e31b23; color: #fff; font-weight: 900; font-size: 16px;
-        padding: 8px 24px; border-radius: 30px; text-transform: uppercase;
-    }
-    .fc-result-value { font-size: 22px; font-weight: 900; color: #000; text-transform: uppercase; }
-    .fc-right-col { flex: 1.2 1 350px; display: flex; flex-direction: column; gap: 40px; justify-content: center; }
-    .fc-info-box {
-        background-color: #e31b23; border-radius: 12px; padding: 30px 24px 20px;
-        position: relative; box-shadow: 0 10px 20px -5px rgba(227,27,35,0.3);
-    }
-    .fc-box-badge {
-        position: absolute; top: -18px; left: 24px; background-color: #e31b23; color: #fff;
-        font-size: 15px; font-weight: 900; padding: 6px 24px; border-radius: 20px;
-        border: 4px solid #f3f4f6; letter-spacing: 1px; text-transform: uppercase;
-    }
-    .fc-badge-green { background-color: #0a8a3c; }
-    .fc-box-text { color: #fff; font-size: 18px; font-weight: 600; line-height: 1.5; margin: 0; margin-top: 12px; }
+    .fc-hero-media { position:relative; margin:0; padding:0; line-height:0; }
+    .fc-hero-img { width:100%; height:auto; display:block; }
+    .fc-hero-logo { position:absolute; top:14px; left:14px; height:30px; width:auto; max-width:36%; object-fit:contain; filter:drop-shadow(0 1px 4px rgba(0,0,0,0.35)); }
 
-    /* Action row below the card — share + download */
-    .fc-card-actions {
-        display: flex; gap: 10px; flex-wrap: wrap;
-        margin: 0 0 32px; max-width: 900px;
+    /* The overlay. Deliberately light and quiet — a frosted white panel, not
+       a heavy black bar. The photo still reads through it. Height follows
+       the text, so there is no fixed height and no aspect ratio. */
+    .fc-hero-strip {
+        position:absolute; left:0; right:0; bottom:0;
+        background:rgba(255,255,255,0.93);
+        -webkit-backdrop-filter:blur(8px) saturate(1.15);
+        backdrop-filter:blur(8px) saturate(1.15);
+        border-top:1px solid rgba(15,23,42,0.07);
+        padding:11px 15px 12px; display:flex; flex-direction:column; gap:4px;
     }
-    .fc-act-btn {
-        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-        font-size: 14px; font-weight: 600; font-family: system-ui, -apple-system, sans-serif;
-        border-radius: 10px; padding: 11px 20px; cursor: pointer; border: 1px solid transparent;
-        transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-    }
-    .fc-act-btn svg { width: 17px; height: 17px; flex-shrink: 0; display: block; }
-    .fc-act-share {
-        background: #e31b23; color: #fff !important; border-color: #e31b23;
-        box-shadow: 0 4px 12px rgba(227,27,35,0.22);
-    }
-    .fc-act-share svg { fill: #fff; }
-    .fc-act-share:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(227,27,35,0.35); background: #cc181f; }
-    .fc-act-download {
-        background: #ffffff; color: #1e293b !important; border-color: #d1d5db;
-    }
-    .fc-act-download svg { stroke: #1e293b; }
-    .fc-act-download:hover { transform: translateY(-2px); background: #f8fafc; border-color: #94a3b8; }
-    .fc-act-btn.fc-busy { opacity: 0.6; pointer-events: none; }
+    .fc-hero-row { display:flex; gap:10px; align-items:baseline; margin:0; padding:0; }
+    .fc-hero-label { flex:0 0 42px; font-size:10px; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; color:#94a0b0 !important; line-height:1.7; }
+    .fc-hero-text { font-size:14px; line-height:1.45; color:#131a26 !important; margin:0; padding:0; }
 
-    /* ── Dark mode ── */
-    @media (prefers-color-scheme: dark) {
-        /* The card interior intentionally stays light — it is a branded
-           graphic meant to look like a printed card, and it gets exported
-           as an image. We adapt only the surrounding controls so nothing
-           becomes invisible against a dark page. */
-        .fc-export-card { box-shadow: 0 4px 20px rgba(0,0,0,0.4); border-color: #333; }
-        .fc-act-download {
-            background: #1e293b; color: #e2e8f0 !important; border-color: #334155;
-        }
-        .fc-act-download svg { stroke: #e2e8f0; }
-        .fc-act-download:hover { background: #273548; border-color: #475569; }
+    /* Verdict pill. Same shape and weight as the category tags on the site. */
+    .fc-hero-verdict { display:inline-block; font-size:10px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; color:#ffffff !important; padding:2px 7px; border-radius:4px; margin-right:7px; }
+    .fc-hero-verdict.fc-v-false { background:#e31b23; }
+    .fc-hero-verdict.fc-v-warn  { background:#d97706; }
+    .fc-hero-verdict.fc-v-true  { background:#15803d; }
+
+    /* No featured image — the strip becomes a plain block instead of an overlay. */
+    .fc-hero--no-img .fc-hero-strip { position:static; background:#f8fafc; -webkit-backdrop-filter:none; backdrop-filter:none; border-top:0; }
+
+    @media (max-width:600px) {
+        .fc-hero-strip { padding:9px 11px 10px; gap:3px; }
+        .fc-hero-text { font-size:12.5px; line-height:1.4; }
+        .fc-hero-label { flex-basis:34px; font-size:9px; }
+        .fc-hero-verdict { font-size:9px; padding:2px 6px; margin-right:5px; }
+        .fc-hero-logo { height:22px; top:10px; left:10px; }
     }
     </style>
 
-    <div>
-        <div class="fc-card-wrapper">
-            <div id="fc-fact-card" class="fc-export-card">
+    <div class="fc-hero <?php echo $has_img ? '' : 'fc-hero--no-img'; ?>">
+        <figure class="fc-hero-media">
+            <?php
+            // Already escaped by WordPress.
+            echo $img_html;
+            ?>
 
-                <div class="fc-left-col">
-                    <?php if ( $logo_src ) : ?>
-                    <img src="<?php echo esc_attr( $logo_src ); ?>" class="fc-card-logo" alt="Logo">
-                    <?php endif; ?>
+            <?php if ( $has_img && $logo_url ) : ?>
+            <img src="<?php echo esc_url( $logo_url ); ?>" class="fc-hero-logo" alt="">
+            <?php endif; ?>
 
-                    <div class="fc-image-container">
-                        <?php if ( $featured_src ) : ?>
-                        <img src="<?php echo esc_attr( $featured_src ); ?>" class="fc-featured-img" alt="">
-                        <?php endif; ?>
-                        <?php if ( $stamp_src ) : ?>
-                        <img src="<?php echo esc_attr( $stamp_src ); ?>" class="fc-stamp-overlay" alt="<?php echo esc_attr( $rating_label ); ?>">
-                        <?php endif; ?>
-                    </div>
+            <?php if ( $claim !== '' || $fact !== '' ) : ?>
+            <div class="fc-hero-strip">
 
-                    <div class="fc-card-footer">
-                        <div class="fc-contact-info">
-                            <span class="fc-contact-badge">
-                                <svg width="14" height="14" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                                Whatsapp us
-                            </span>
-                            <p class="fc-contact-number">9049053770</p>
-                        </div>
-                        <div class="fc-social-section">
-                            <div class="fc-social-badge">Follow us</div>
-                            <div class="fc-social-icons">
-                                <svg fill="#1877F2" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                                <svg fill="#E4405F" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-                                <svg fill="#1DA1F2" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
-                            </div>
-                        </div>
-                    </div>
+                <?php if ( $claim !== '' ) : ?>
+                <p class="fc-hero-row">
+                    <span class="fc-hero-label">Claim</span>
+                    <span class="fc-hero-text"><?php echo esc_html( $claim ); ?></span>
+                </p>
+                <?php endif; ?>
 
-                    <div class="fc-result-row">
-                        <div class="fc-result-btn">RESULT</div>
-                        <div class="fc-result-value"><?php echo esc_html( $rating_label ); ?></div>
-                    </div>
-                </div>
-
-                <div class="fc-right-col">
-                    <?php if ( $claim ) : ?>
-                    <div class="fc-info-box">
-                        <span class="fc-box-badge">CLAIM</span>
-                        <p class="fc-box-text"><?php echo esc_html( $claim ); ?></p>
-                    </div>
-                    <?php endif; ?>
-
-                    <?php if ( $fact ) : ?>
-                    <div class="fc-info-box">
-                        <span class="fc-box-badge fc-badge-green">FACT CHECK</span>
-                        <p class="fc-box-text"><?php echo esc_html( $fact ); ?></p>
-                    </div>
-                    <?php endif; ?>
-                </div>
+                <?php if ( $fact !== '' ) : ?>
+                <p class="fc-hero-row">
+                    <span class="fc-hero-label">Fact</span>
+                    <span class="fc-hero-text"><?php if ( $rating_label ) : ?><span class="fc-hero-verdict fc-v-<?php echo esc_attr( $tone ); ?>"><?php echo esc_html( $rating_label ); ?></span><?php endif; ?><?php echo esc_html( $fact ); ?></span>
+                </p>
+                <?php endif; ?>
 
             </div>
-        </div>
-
-        <div class="fc-card-actions">
-            <button class="fc-act-btn fc-act-share" type="button" onclick="fcShareCard(this)">
-                <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
-                Share
-            </button>
-            <button class="fc-act-btn fc-act-download" type="button" onclick="fcDownloadCard(this)">
-                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
-                Download
-            </button>
-        </div>
+            <?php endif; ?>
+        </figure>
     </div>
-
-    <script>
-    function fcRenderFactCard() {
-        if (typeof html2canvas === 'undefined') return Promise.reject(new Error('lib-not-loaded'));
-        var card = document.getElementById('fc-fact-card');
-        return html2canvas(card, { useCORS: true, scale: 2, backgroundColor: '#f3f4f6' });
-    }
-    function fcDownloadCard(btn) {
-        var orig = btn.innerHTML;
-        btn.classList.add('fc-busy');
-        fcRenderFactCard().then(function(canvas) {
-            var a = document.createElement('a');
-            a.download = 'fact-check.png';
-            a.href = canvas.toDataURL('image/png');
-            a.click();
-            btn.classList.remove('fc-busy');
-        }).catch(function(err) {
-            console.error('FC download error:', err);
-            btn.innerHTML = 'Try again';
-            setTimeout(function(){ btn.innerHTML = orig; btn.classList.remove('fc-busy'); }, 2500);
-        });
-    }
-    function fcShareCard(btn) {
-        var orig = btn.innerHTML;
-        btn.classList.add('fc-busy');
-        fcRenderFactCard().then(function(canvas) {
-            canvas.toBlob(function(blob) {
-                var file = new File([blob], 'fact-check.png', { type: 'image/png' });
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    navigator.share({ files: [file], title: document.title, url: window.location.href })
-                        .catch(function(){})
-                        .finally(function(){ btn.classList.remove('fc-busy'); });
-                } else {
-                    // Desktop fallback: download the image instead of sharing
-                    var url = URL.createObjectURL(blob);
-                    var a = document.createElement('a');
-                    a.href = url; a.download = 'fact-check.png'; a.click();
-                    URL.revokeObjectURL(url);
-                    btn.classList.remove('fc-busy');
-                }
-            });
-        }).catch(function(err) {
-            console.error('FC share error:', err);
-            btn.innerHTML = 'Try again';
-            setTimeout(function(){ btn.innerHTML = orig; btn.classList.remove('fc-busy'); }, 2500);
-        });
-    }
-    </script>
     <?php
     return ob_get_clean();
-}
-
-/**
- * Fetches a remote image and returns it as a base64 data URI, cached for
- * a week. This lets html2canvas read otherwise cross-origin images (the
- * stamp and featured image) when exporting the card. Returns '' on any
- * failure so callers can fall back to the live URL for on-page display.
- */
-function fc_image_to_base64( $url ) {
-    if ( empty( $url ) ) return '';
-
-    // Defensive: only ever fetch over http(s). The callers all pass
-    // trusted URLs (filtered stamp map, WP thumbnail, admin logo setting),
-    // but this guard ensures no other scheme (file://, ftp://, etc.) could
-    // be fetched even if a future code path passes something unexpected.
-    $scheme = wp_parse_url( $url, PHP_URL_SCHEME );
-    if ( ! in_array( $scheme, [ 'http', 'https' ], true ) ) {
-        return '';
-    }
-
-    $cache_key = 'fc_img64_' . md5( $url );
-    $cached    = get_transient( $cache_key );
-    if ( $cached !== false ) {
-        return $cached; // may be a data URI, or '' from a prior failed fetch
-    }
-
-    $response = wp_remote_get( $url, [ 'timeout' => 15 ] );
-    if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
-        set_transient( $cache_key, '', HOUR_IN_SECONDS );
-        return '';
-    }
-
-    $body = wp_remote_retrieve_body( $response );
-    $type = wp_remote_retrieve_header( $response, 'content-type' );
-
-    if ( empty( $body ) || strpos( (string) $type, 'image/' ) !== 0 ) {
-        set_transient( $cache_key, '', HOUR_IN_SECONDS );
-        return '';
-    }
-
-    $data_uri = 'data:' . $type . ';base64,' . base64_encode( $body );
-    set_transient( $cache_key, $data_uri, WEEK_IN_SECONDS );
-    return $data_uri;
 }
 
 // ── AUDIO PLAYER ──────────────────────────────────────────────────────────────

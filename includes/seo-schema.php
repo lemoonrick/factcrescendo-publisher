@@ -57,16 +57,52 @@ function fc_inject_claim_review_schema() {
     $rating_value = fc_get_schema_rating_value( $rating );
     $permalink    = get_permalink( $post_id );
 
-    // claimReviewed: claim text, no rating, trimmed toward ~75 chars on a
-    // word boundary. Falls back to the post title if no claim was set.
+    // claimReviewed: the claim itself, cleaned up but NOT cut short.
+    //
+    // The old ~75 character limit came from Google's guidance for the
+    // search result box, and that display feature has since been retired.
+    // What still reads this markup — Fact Check Explorer and AI systems —
+    // is better served by the whole claim than by half of one plus "...".
     $claim_reviewed = $claim !== '' ? $claim : get_the_title( $post_id );
-    $claim_reviewed = fc_trim_claim_text( $claim_reviewed, 75 );
+    $claim_reviewed = fc_trim_plain( $claim_reviewed, 300 );
 
     // Publisher name, kept safely under Google's 100-char author limit.
     $site_name = fc_trim_plain( get_bloginfo( 'name' ), 100 );
 
     $date_published = get_the_date( 'c', $post_id ); // ISO 8601 with offset
     $date_modified  = get_the_modified_date( 'c', $post_id );
+
+    // ── The claim being reviewed ──────────────────────────────────────────
+    //
+    // 'appearance' means "where the claim originally appeared" — the viral
+    // post, the video, the channel. It used to be filled with a link to this
+    // very article, which is a circle pointing at itself and tells Google
+    // nothing. It is now only included when an editor supplies a real source,
+    // and left out otherwise.
+    //
+    // 'author' is who made the claim. It was missing entirely, and it is the
+    // single most useful field here for Fact Check Explorer.
+    $item_reviewed = [
+        '@type'         => 'Claim',
+        'datePublished' => $date_published,
+    ];
+
+    $source_url = trim( (string) get_field( 'fc_claim_source_url', $post_id ) );
+    if ( $source_url !== '' && wp_http_validate_url( $source_url ) ) {
+        $item_reviewed['appearance'] = [
+            '@type' => 'CreativeWork',
+            'url'   => esc_url_raw( $source_url ),
+        ];
+    }
+
+    $claim_author = fc_trim_plain( (string) get_field( 'fc_claim_author', $post_id ), 100 );
+    if ( $claim_author !== '' ) {
+        $author_type = get_field( 'fc_claim_author_type', $post_id );
+        $item_reviewed['author'] = [
+            '@type' => $author_type === 'Organization' ? 'Organization' : 'Person',
+            'name'  => $claim_author,
+        ];
+    }
 
     $schema = [
         '@context'      => 'https://schema.org',
@@ -76,16 +112,9 @@ function fc_inject_claim_review_schema() {
         'dateModified'  => $date_modified,
         'claimReviewed' => $claim_reviewed,
 
-        // The claim being reviewed. Modern Claim type with an appearance
-        // pointing back at this fact-check article.
-        'itemReviewed' => [
-            '@type'         => 'Claim',
-            'datePublished' => $date_published,
-            'appearance'    => [
-                '@type' => 'CreativeWork',
-                'url'   => $permalink,
-            ],
-        ],
+        // The claim being reviewed. Built below so the optional source
+        // fields are only included when an editor actually filled them in.
+        'itemReviewed' => $item_reviewed,
 
         // Publisher of the FACT CHECK (this site/edition), not the claim.
         'author' => [
@@ -138,23 +167,6 @@ function fc_get_schema_rating_value( $rating ) {
         'news'            => 5,
     ];
     return $map[ strtolower( (string) $rating ) ] ?? 1;
-}
-
-/**
- * Trims claim text toward a target length without cutting mid-word, and
- * collapses whitespace. Google recommends claimReviewed stay near 75 chars
- * to avoid wrapping on mobile.
- */
-function fc_trim_claim_text( $text, $target = 75 ) {
-    $text = fc_trim_plain( $text, 300 ); // hard ceiling first
-    if ( mb_strlen( $text ) <= $target ) return $text;
-
-    $cut = mb_substr( $text, 0, $target );
-    $last_space = mb_strrpos( $cut, ' ' );
-    if ( $last_space !== false && $last_space > 40 ) {
-        $cut = mb_substr( $cut, 0, $last_space );
-    }
-    return rtrim( $cut, " ,.;:" ) . '…';
 }
 
 /**

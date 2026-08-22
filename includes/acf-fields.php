@@ -80,6 +80,49 @@ function fc_register_acf_fields() {
             ],
 
             [
+                'key'               => 'field_fc_claim_source_url',
+                'label'             => 'Where the claim appeared (link)',
+                'name'              => 'fc_claim_source_url',
+                'type'              => 'url',
+                'required'          => 0,
+                'placeholder'       => 'https://...',
+                'instructions'      => 'Optional. Link to the post, video or article where the claim was made. Sent to Google so the claim can be traced back to its source.',
+                'conditional_logic' => $show_if_fact_check,
+            ],
+
+            [
+                'key'               => 'field_fc_claim_author',
+                'label'             => 'Who made the claim',
+                'name'              => 'fc_claim_author',
+                'type'              => 'text',
+                'required'          => 0,
+                'placeholder'       => 'e.g. Viral WhatsApp forward, @username, a news channel',
+                'instructions'      => 'Optional. The person, account or outlet the claim came from.',
+                'conditional_logic' => $show_if_fact_check,
+            ],
+
+            [
+                'key'               => 'field_fc_claim_author_type',
+                'label'             => 'That source is a',
+                'name'              => 'fc_claim_author_type',
+                'type'              => 'select',
+                'required'          => 0,
+                'choices'           => [
+                    'Person'       => 'Person or social media account',
+                    'Organization' => 'Organisation, channel or publication',
+                ],
+                'default_value'     => 'Person',
+                'return_format'     => 'value',
+                'instructions'      => 'Google records these differently. Only shown once you name a source above.',
+                'conditional_logic' => [
+                    [
+                        [ 'field' => 'field_fc_is_fact_check', 'operator' => '==', 'value' => '1' ],
+                        [ 'field' => 'field_fc_claim_author', 'operator' => '!=empty' ],
+                    ],
+                ],
+            ],
+
+            [
                 'key'               => 'field_fc_generate_audio',
                 'label'             => 'Generate Audio Narration',
                 'name'              => 'fc_generate_audio',

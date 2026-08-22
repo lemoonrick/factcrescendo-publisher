@@ -3,14 +3,14 @@
  * Plugin Name:       FactCrescendo Publisher
  * Plugin URI:        https://factcrescendo.com
  * Description:       Automates fact-check publishing. ACF fields, REST API, auto-injected Fact Card / Author Box / WhatsApp Banner, ClaimReview schema, and AI narration.
- * Version:           4.1.1
+ * Version:           4.2.0
  * Author:            FactCrescendo
  * License:           GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'FC_PUBLISHER_VERSION', '4.1.1' );
+define( 'FC_PUBLISHER_VERSION', '4.2.0' );
 define( 'FC_PUBLISHER_FILE', __FILE__ );
 define( 'FC_PUBLISHER_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FC_PUBLISHER_URL', plugin_dir_url( __FILE__ ) );
