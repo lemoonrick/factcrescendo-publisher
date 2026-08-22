@@ -41,11 +41,22 @@ function fc_plugin_slug() {
 }
 
 
-// -- Ask GitHub what the latest release is -----------------------------------
+// -- Ask GitHub what the newest version is ------------------------------------
 
 /**
- * Returns [ version, zip, notes, published, url ] for the newest release,
- * or null if there isn't one / GitHub couldn't be reached.
+ * Returns [ version, zip, notes, published, url ] for the newest version
+ * available, or null if there isn't one / GitHub couldn't be reached.
+ *
+ * Looks at BOTH published releases and plain tags, and uses whichever is
+ * newer. This matters because a git tag is not the same thing as a GitHub
+ * release: pushing a tag alone leaves /releases/latest reporting an older
+ * version, and sites correctly conclude there is nothing to update to.
+ * Versions 4.1.1 through 4.3.0 were tagged but never released, and every
+ * site sat on an old copy as a result.
+ *
+ * Publishing a proper release is still worth doing — it is the only way to
+ * attach notes for the "View details" popup — but forgetting to no longer
+ * strands anybody.
  */
 function fc_get_latest_release( $force = false ) {
 
@@ -57,8 +68,33 @@ function fc_get_latest_release( $force = false ) {
         }
     }
 
+    $from_release = fc_fetch_latest_release();
+    $from_tag     = fc_fetch_latest_tag();
+
+    $best = $from_release;
+
+    // Prefer the tag only when it is genuinely newer. On a tie the release
+    // wins, because it carries the notes.
+    if ( $from_tag && ( ! $best || version_compare( $from_tag['version'], $best['version'], '>' ) ) ) {
+        $best = $from_tag;
+    }
+
+    if ( ! $best ) {
+        set_transient( FC_UPDATE_CACHE_KEY, '', HOUR_IN_SECONDS );
+        return null;
+    }
+
+    set_transient( FC_UPDATE_CACHE_KEY, $best, 12 * HOUR_IN_SECONDS );
+
+    return $best;
+}
+
+/**
+ * One request to the GitHub API. Returns the decoded body, or null.
+ */
+function fc_github_get( $path ) {
     $response = wp_remote_get(
-        'https://api.github.com/repos/' . fc_update_repo() . '/releases/latest',
+        'https://api.github.com/repos/' . fc_update_repo() . $path,
         [
             'timeout' => 15,
             'headers' => [
@@ -70,29 +106,78 @@ function fc_get_latest_release( $force = false ) {
     );
 
     if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
-        set_transient( FC_UPDATE_CACHE_KEY, '', HOUR_IN_SECONDS );
         return null;
     }
 
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
 
-    if ( empty( $body['tag_name'] ) ) {
-        set_transient( FC_UPDATE_CACHE_KEY, '', HOUR_IN_SECONDS );
-        return null;
-    }
+    return is_array( $body ) ? $body : null;
+}
 
-    $release = [
-        // Tags are usually written "v4.1.0"; WordPress compares "4.1.0".
-        'version'   => ltrim( (string) $body['tag_name'], 'vV' ),
+/**
+ * The newest published release, or null when the repository has none.
+ */
+function fc_fetch_latest_release() {
+    $body = fc_github_get( '/releases/latest' );
+
+    if ( empty( $body['tag_name'] ) ) return null;
+
+    $version = fc_version_from_tag( $body['tag_name'] );
+    if ( $version === '' ) return null;
+
+    return [
+        'version'   => $version,
         'zip'       => fc_pick_release_zip( $body ),
         'notes'     => isset( $body['body'] ) ? (string) $body['body'] : '',
         'published' => isset( $body['published_at'] ) ? (string) $body['published_at'] : '',
         'url'       => isset( $body['html_url'] ) ? (string) $body['html_url'] : '',
     ];
+}
 
-    set_transient( FC_UPDATE_CACHE_KEY, $release, 12 * HOUR_IN_SECONDS );
+/**
+ * The highest version tag in the repository, released or not.
+ *
+ * GitHub returns tags in its own order, which is not version order, so the
+ * list is compared properly rather than trusting the first entry.
+ */
+function fc_fetch_latest_tag() {
+    $body = fc_github_get( '/tags?per_page=100' );
 
-    return $release;
+    if ( ! $body ) return null;
+
+    $best = null;
+
+    foreach ( $body as $tag ) {
+        if ( empty( $tag['name'] ) || empty( $tag['zipball_url'] ) ) continue;
+
+        $version = fc_version_from_tag( $tag['name'] );
+        if ( $version === '' ) continue;
+
+        if ( $best === null || version_compare( $version, $best['version'], '>' ) ) {
+            $best = [
+                'version'   => $version,
+                'zip'       => (string) $tag['zipball_url'],
+                'notes'     => '',
+                'published' => '',
+                'url'       => 'https://github.com/' . fc_update_repo() . '/releases/tag/' . $tag['name'],
+            ];
+        }
+    }
+
+    return $best;
+}
+
+/**
+ * Turns a tag name into a version number, or '' if it isn't one.
+ *
+ * Tags are usually written "v4.1.0"; WordPress compares "4.1.0". Anything
+ * that isn't a plain dotted number is ignored, so branch-style or
+ * experimental tags can never be mistaken for a release.
+ */
+function fc_version_from_tag( $tag_name ) {
+    $version = ltrim( trim( (string) $tag_name ), 'vV' );
+
+    return preg_match( '/^\d+(\.\d+)*$/', $version ) ? $version : '';
 }
 
 /**
