@@ -205,6 +205,13 @@ function fc_render_settings_page() {
         </form>
 
         <div class="fc-settings-section">
+            <h2>Where the Fact Card Appears</h2>
+            <p class="fc-section-desc">By default the card sits at the very top of the article. If you write a byline as the first line, the card would land above it &mdash; so type this on the line where the card should go instead:</p>
+            <div class="fc-code-block">[fact_card]</div>
+            <p class="fc-field-hint">Put it just below the byline. Leave it out entirely on posts without a byline and nothing changes. Anything written above it is skipped by the audio player, so the byline is not read aloud.</p>
+        </div>
+
+        <div class="fc-settings-section">
             <h2>Stamp Image Override</h2>
             <p class="fc-section-desc">Default stamps load from factcrescendo.com. To use different images on this site, add this to your theme's functions.php:</p>
             <div class="fc-code-block">add_filter( 'fc_stamp_map', function( $map ) {<br>&nbsp;&nbsp;&nbsp;&nbsp;$map['false'] = 'https://yoursite.com/False.png';<br>&nbsp;&nbsp;&nbsp;&nbsp;return $map;<br>} );</div>

@@ -1,6 +1,28 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+/**
+ * [fact_card] — lets an editor say where the card goes.
+ *
+ * By default the card is added to the very start of the article body, which
+ * puts it above a byline when one is typed as the first line. Typing
+ * [fact_card] on the line below the byline moves the card there instead.
+ *
+ * Why a placeholder comment rather than the card itself: shortcodes are
+ * expanded at priority 11 on the_content, but the card needs data this
+ * filter gathers at priority 20. So the shortcode leaves a marker, and
+ * fc_inject_blocks() splits the content on it.
+ *
+ * Registering it also means a stray [fact_card] on a normal post prints
+ * nothing at all, rather than showing as raw text.
+ */
+const FC_CARD_MARKER = '<!--fc-card-here-->';
+
+add_shortcode( 'fact_card', 'fc_card_marker_shortcode' );
+function fc_card_marker_shortcode() {
+    return FC_CARD_MARKER;
+}
+
 // 2. Inject the Blocks
 add_filter( 'the_content', 'fc_inject_blocks', 20 );
 function fc_inject_blocks( $content ) {
@@ -30,17 +52,55 @@ function fc_inject_blocks( $content ) {
     $author_box   = fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_label );
     $wa_banner    = fc_get_whatsapp_banner();
 
+    list( $before, $after ) = fc_split_on_card_marker( $content );
+
     // Audio player is optional per site. When disabled, no player renders
     // and the article content is returned without the highlight wrapper.
     $audio_enabled = get_option( 'fc_enable_audio', '1' ) === '1';
 
     if ( $audio_enabled ) {
         $audio_player    = fc_build_audio_player( $post_id, $title, $claim, $fact );
-        $wrapped_content = '<div id="fc-article-body-' . esc_attr( $post_id ) . '" class="fc-article-body">' . $content . '</div>';
-        return $fact_card . $audio_player . $wrapped_content . $author_box . $wa_banner;
+        $wrapped_content = '<div id="fc-article-body-' . esc_attr( $post_id ) . '" class="fc-article-body">' . $after . '</div>';
+
+        // Anything above the marker — a byline line, typically — stays outside
+        // the narration wrapper, so the player doesn't read it aloud before
+        // starting the article.
+        return $before . $fact_card . $audio_player . $wrapped_content . $author_box . $wa_banner;
     }
 
-    return $fact_card . $content . $author_box . $wa_banner;
+    return $before . $fact_card . $after . $author_box . $wa_banner;
+}
+
+/**
+ * Splits article content at the [fact_card] marker.
+ *
+ * Returns [ text before the marker, everything after it ]. With no marker,
+ * everything lands in the second half and the card sits at the top exactly
+ * as it always has.
+ *
+ * Only the first marker counts; any others are stripped so they can't leave
+ * stray comments in the page or split the article twice.
+ */
+function fc_split_on_card_marker( $content ) {
+
+    if ( strpos( $content, FC_CARD_MARKER ) === false ) {
+        return [ '', $content ];
+    }
+
+    // wpautop runs before us and may have wrapped the marker in its own
+    // paragraph tags. Swallow those too, so no empty <p></p> is left behind.
+    $pattern = '/(?:<p>\s*)?' . preg_quote( FC_CARD_MARKER, '/' ) . '(?:\s*<\/p>)?/';
+
+    $parts = preg_split( $pattern, $content, 2 );
+
+    if ( ! is_array( $parts ) || count( $parts ) < 2 ) {
+        return [ '', $content ];
+    }
+
+    // Drop any further markers from the remainder.
+    $after = preg_replace( $pattern, '', $parts[1] );
+
+    return [ $parts[0], $after ];
 }
 
 /**
@@ -60,24 +120,34 @@ function fc_rating_tone( $rating ) {
  * The featured image, full width of the content column, with a slim strip
  * across the bottom carrying the claim and the finding.
  *
- * Deliberately plain: white card, blue border, one image, one strip. No
- * screenshot export, no inlined base64 images, no social icons or phone
- * number baked into the graphic. The strip is sized by its text, so it
- * stays slim as long as the claim and fact are written tightly.
+ * Deliberately plain: white card, one image, one strip. No screenshot
+ * export, no inlined base64 images, no social icons or phone number baked
+ * into the graphic. The strip is sized by its text, so it stays slim as
+ * long as the claim and fact are written tightly.
  *
- * Where this appears: the plugin adds it to the start of the article body,
- * so the theme's title and byline always sit above it — with or without a
- * byline, nothing here needs to change.
+ * Where this appears: at the start of the article body by default, or
+ * wherever the editor typed [fact_card] — see fc_inject_blocks().
  */
 function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $logo_url ) {
 
-    // Let WordPress emit the image so it comes with srcset — phones download
-    // a phone-sized file instead of the full-resolution original.
-    $img_html = get_the_post_thumbnail( $post_id, 'full', [
+    // Build the image from the attachment directly rather than with
+    // get_the_post_thumbnail().
+    //
+    // get_the_post_thumbnail() passes its output through the
+    // 'post_thumbnail_html' filter on the way out, and blanking that filter
+    // is exactly how "hide featured image" plugins work. Using it here meant
+    // that hiding the theme's duplicate image also blanked ours, and the card
+    // collapsed into its no-image fallback.
+    //
+    // wp_get_attachment_image() is the inner call that builds the same tag,
+    // srcset included, without passing through that filter — so the theme's
+    // copy can be hidden while the card keeps its picture.
+    $thumb_id = get_post_thumbnail_id( $post_id );
+    $img_html = $thumb_id ? wp_get_attachment_image( $thumb_id, 'full', false, [
         'class'         => 'fc-hero-img',
         'loading'       => 'eager',        // it is the top of the article
         'fetchpriority' => 'high',
-    ] );
+    ] ) : '';
 
     $has_img = ( $img_html !== '' );
     $claim   = trim( (string) $claim );
@@ -153,18 +223,22 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
             <?php if ( $claim !== '' || $fact !== '' ) : ?>
             <div class="fc-hero-strip">
 
+                <?php /* Divs, not paragraphs: keeps theme paragraph styling out
+                         of the strip, and keeps the narrator from ever treating
+                         the claim and fact as article text. */ ?>
+
                 <?php if ( $claim !== '' ) : ?>
-                <p class="fc-hero-row">
+                <div class="fc-hero-row">
                     <span class="fc-hero-label">Claim</span>
                     <span class="fc-hero-text"><?php echo esc_html( $claim ); ?></span>
-                </p>
+                </div>
                 <?php endif; ?>
 
                 <?php if ( $fact !== '' ) : ?>
-                <p class="fc-hero-row">
+                <div class="fc-hero-row">
                     <span class="fc-hero-label">Fact</span>
                     <span class="fc-hero-text"><?php if ( $rating_label ) : ?><span class="fc-hero-verdict fc-v-<?php echo esc_attr( $tone ); ?>"><?php echo esc_html( $rating_label ); ?></span><?php endif; ?><?php echo esc_html( $fact ); ?></span>
-                </p>
+                </div>
                 <?php endif; ?>
 
             </div>
@@ -298,11 +372,19 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
             var langShort  = root.getAttribute('data-lang-short') || 'en';
             var bodyEl     = document.getElementById(<?php echo wp_json_encode( $body_id ); ?>);
 
-            // TTS reads ONLY the article body paragraphs. The fact card,
-            // claim, and fact boxes live outside this container, so they are
-            // never spoken — reading starts at the actual article content.
+            // TTS reads ONLY the article body paragraphs. The fact card and
+            // the player are placed outside this container, and anything the
+            // editor wrote above the [fact_card] marker — a byline line —
+            // stays outside it too, so none of that is ever read aloud.
+            //
+            // The card/player checks below are belt and braces: they are not
+            // inside the container today, but if a future layout change ever
+            // puts them there, the narrator still won't read the claim, the
+            // fact, or the words "Listen to this article".
             var paras = bodyEl ? Array.prototype.slice.call(bodyEl.querySelectorAll('p')).filter(function(p) {
-                return p.textContent.replace(/\s+/g, '').length > 8;
+                if (p.textContent.replace(/\s+/g, '').length <= 8) return false;
+                if (p.closest && (p.closest('.fc-hero') || p.closest('.fc-a-wrap'))) return false;
+                return true;
             }) : [];
 
             var playBtn  = root.querySelector('.fc-a-play');
