@@ -740,16 +740,31 @@ function fc_get_whatsapp_banner() {
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
+/**
+ * Rating stamps now ship inside the plugin, in assets/stamps/.
+ *
+ * They used to be loaded live from factcrescendo.com, which meant every
+ * edition depended on that one site staying up and on that uploads folder
+ * never being reorganised. If either had changed, stamps would have broken
+ * across all editions at the same moment. Serving them from each site's own
+ * copy of the plugin removes that shared point of failure, and they arrive
+ * from the same domain as the page.
+ *
+ * The fc_stamp_map filter still works exactly as before, so a site that
+ * wants its own artwork can keep overriding these.
+ */
 function fc_get_stamp_url( $rating ) {
+    $base = FC_PUBLISHER_URL . 'assets/stamps/';
+
     $default_map = [
-        'false'           => 'https://www.factcrescendo.com/wp-content/uploads/2026/03/False.png',
-        'partly-false'    => 'https://www.factcrescendo.com/wp-content/uploads/2026/03/Partly-False.png',
-        'misleading'      => 'https://www.factcrescendo.com/wp-content/uploads/2026/03/Misleading.png',
-        'missing-context' => 'https://www.factcrescendo.com/wp-content/uploads/2026/03/Missing-Context.png',
-        'satire'          => 'https://www.factcrescendo.com/wp-content/uploads/2026/03/Satire.png',
-        'altered'         => 'https://www.factcrescendo.com/wp-content/uploads/2026/03/Altered.png',
-        'insight'         => 'https://www.factcrescendo.com/wp-content/uploads/2026/03/Insight.png',
-        'news'            => 'https://www.factcrescendo.com/wp-content/uploads/2026/03/News.png',
+        'false'           => $base . 'False.png',
+        'partly-false'    => $base . 'Partly-False.png',
+        'misleading'      => $base . 'Misleading.png',
+        'missing-context' => $base . 'Missing-Context.png',
+        'satire'          => $base . 'Satire.png',
+        'altered'         => $base . 'Altered.png',
+        'insight'         => $base . 'Insight.png',
+        'news'            => $base . 'News.png',
     ];
     $stamp_map = apply_filters( 'fc_stamp_map', $default_map );
     return $stamp_map[ strtolower( (string) $rating ) ] ?? '';

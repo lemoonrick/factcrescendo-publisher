@@ -213,7 +213,7 @@ function fc_render_settings_page() {
 
         <div class="fc-settings-section">
             <h2>Stamp Image Override</h2>
-            <p class="fc-section-desc">Default stamps load from factcrescendo.com. To use different images on this site, add this to your theme's functions.php:</p>
+            <p class="fc-section-desc">Stamps ship with the plugin and load from this site, so they keep working even if another site is down. To use different images here, add this to your theme's functions.php:</p>
             <div class="fc-code-block">add_filter( 'fc_stamp_map', function( $map ) {<br>&nbsp;&nbsp;&nbsp;&nbsp;$map['false'] = 'https://yoursite.com/False.png';<br>&nbsp;&nbsp;&nbsp;&nbsp;return $map;<br>} );</div>
         </div>
 
