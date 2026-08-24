@@ -165,44 +165,55 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
     ob_start();
     ?>
     <style>
-    /* Two clean pieces: the picture, then the findings.
-       The bar used to sit ON the image, which clipped the FACT CHECKED
-       stamp burned into the artwork. It now sits below, so the image is
-       never covered by anything.
+    /* Material Design treatment, using Google's own palette values.
+       Two tonal rows rather than lines and rules: the claim on a green
+       surface, the finding on white with a filled verdict chip. Colour
+       does the separating, so no borders are needed.
 
-       font-family:inherit means the card takes the theme's own typeface. */
-    .fc-hero { background:#ffffff; margin:0 0 28px; font-family:inherit; }
+       font-family:inherit keeps the theme's typeface. */
+    .fc-hero {
+        background:#ffffff; border-radius:12px; overflow:hidden;
+        box-shadow:0 1px 2px rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15);
+        margin:0 0 28px; font-family:inherit;
+    }
 
     .fc-hero-media { position:relative; margin:0; padding:0; line-height:0; }
     .fc-hero-img { width:100%; height:auto; display:block; }
     .fc-hero-logo { position:absolute; top:16px; left:16px; height:30px; width:auto; max-width:36%; object-fit:contain; filter:drop-shadow(0 1px 4px rgba(0,0,0,0.35)); }
 
-    /* The findings bar. One strong red rule tying it to the picture, then
-       two plainly-set rows. The claim sits back on a tinted ground; the
-       verdict and fact come forward on white. That contrast is what makes
-       it read at a glance, rather than colour or decoration. */
-    .fc-hero-strip { border-top:3px solid #e31b23; background:#ffffff; }
+    .fc-hero-strip { background:#ffffff; }
+    .fc-hero-row { display:flex; gap:18px; align-items:baseline; margin:0; padding:15px 20px; }
 
-    .fc-hero-row { display:flex; gap:16px; align-items:baseline; margin:0; padding:13px 18px; }
-    .fc-hero-row + .fc-hero-row { border-top:1px solid #e8ebef; }
-    .fc-hero-row-claim { background:#f4f6f8; }
+    /* Material label: small, medium weight, tracked out. */
+    .fc-hero-label { flex:0 0 50px; font-size:11px; font-weight:600; letter-spacing:0.9px; text-transform:uppercase; line-height:1.75; }
+    .fc-hero-text { font-size:15px; line-height:1.6; color:#202124 !important; margin:0; padding:0; }
 
-    .fc-hero-label { flex:0 0 46px; font-size:10px; font-weight:700; letter-spacing:1.1px; text-transform:uppercase; color:#7c8798 !important; line-height:1.9; }
-    .fc-hero-text { font-size:15px; line-height:1.55; color:#1a2231 !important; margin:0; padding:0; }
+    /* CLAIM — Google Green tonal surface (green 50), label in green 800. */
+    .fc-hero-row-claim { background:#e6f4ea; }
+    .fc-hero-row-claim .fc-hero-label { color:#137333 !important; }
+
+    /* FACT — plain white so the verdict chip carries the emphasis. */
+    .fc-hero-row-fact .fc-hero-label { color:#5f6368 !important; }
     .fc-hero-row-fact .fc-hero-text { font-weight:500; }
 
-    /* Verdict. Solid, small radius — the same shape as the category tags
-       already used across the site. */
-    .fc-hero-verdict { display:inline-block; font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#ffffff !important; padding:3px 9px; border-radius:3px; margin-right:9px; white-space:nowrap; }
-    .fc-hero-verdict.fc-v-false { background:#e31b23; }
-    .fc-hero-verdict.fc-v-warn  { background:#c2701a; }
-    .fc-hero-verdict.fc-v-true  { background:#15803d; }
+    /* Verdict — a filled Material chip. Red 600 for a flat falsehood,
+       Orange 800 for the shades between, Green 700 for the confirming
+       ratings. All straight from the Google palette. */
+    .fc-hero-verdict {
+        display:inline-block; font-size:11px; font-weight:600; letter-spacing:0.7px;
+        text-transform:uppercase; color:#ffffff !important; padding:4px 11px;
+        border-radius:8px; margin-right:11px; white-space:nowrap;
+    }
+    .fc-hero-verdict.fc-v-false { background:#d93025; }
+    .fc-hero-verdict.fc-v-warn  { background:#e37400; }
+    .fc-hero-verdict.fc-v-true  { background:#1e8e3e; }
 
     @media (max-width:600px) {
-        .fc-hero-row { padding:11px 13px; gap:11px; }
-        .fc-hero-text { font-size:13.5px; line-height:1.5; }
-        .fc-hero-label { flex-basis:38px; font-size:9px; letter-spacing:0.9px; }
-        .fc-hero-verdict { font-size:10px; padding:2px 7px; margin-right:7px; }
+        .fc-hero { border-radius:10px; }
+        .fc-hero-row { padding:12px 14px; gap:12px; }
+        .fc-hero-text { font-size:13.5px; line-height:1.55; }
+        .fc-hero-label { flex-basis:40px; font-size:10px; letter-spacing:0.7px; }
+        .fc-hero-verdict { font-size:10px; padding:3px 8px; margin-right:8px; }
         .fc-hero-logo { height:22px; top:11px; left:11px; }
     }
     </style>
