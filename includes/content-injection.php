@@ -166,9 +166,10 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
     ?>
     <style>
     /* Material Design treatment, using Google's own palette values.
-       Two tonal rows rather than lines and rules: the claim on a green
-       surface, the finding on white with a filled verdict chip. Colour
-       does the separating, so no borders are needed.
+       Two tonal rows rather than lines and rules, colour-coded the way a
+       reader expects: the claim on a red surface because that is the part
+       that did not hold up, the finding on green because that is what is
+       true. Colour does the separating, so no borders are needed.
 
        font-family:inherit keeps the theme's typeface. */
     .fc-hero {
@@ -186,15 +187,18 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
 
     /* Material label: small, medium weight, tracked out. */
     .fc-hero-label { flex:0 0 50px; font-size:11px; font-weight:600; letter-spacing:0.9px; text-transform:uppercase; line-height:1.75; }
-    .fc-hero-text { font-size:15px; line-height:1.6; color:#202124 !important; margin:0; padding:0; }
+    /* Semibold, not heavy — enough weight to carry the card without
+       shouting, and it stays legible in Devanagari and Khmer where a
+       700 weight starts to fill in the counters. */
+    .fc-hero-text { font-size:15px; line-height:1.6; font-weight:600; color:#202124 !important; margin:0; padding:0; }
 
-    /* CLAIM — Google Green tonal surface (green 50), label in green 800. */
-    .fc-hero-row-claim { background:#e6f4ea; }
-    .fc-hero-row-claim .fc-hero-label { color:#137333 !important; }
+    /* CLAIM — Google Red tonal surface (red 50), label in red 700. */
+    .fc-hero-row-claim { background:#fce8e6; }
+    .fc-hero-row-claim .fc-hero-label { color:#c5221f !important; }
 
-    /* FACT — plain white so the verdict chip carries the emphasis. */
-    .fc-hero-row-fact .fc-hero-label { color:#5f6368 !important; }
-    .fc-hero-row-fact .fc-hero-text { font-weight:500; }
+    /* FACT — Google Green tonal surface (green 50), label in green 800. */
+    .fc-hero-row-fact { background:#e6f4ea; }
+    .fc-hero-row-fact .fc-hero-label { color:#137333 !important; }
 
     /* Verdict — a filled Material chip. Red 600 for a flat falsehood,
        Orange 800 for the shades between, Green 700 for the confirming

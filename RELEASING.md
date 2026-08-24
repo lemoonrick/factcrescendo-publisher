@@ -6,6 +6,20 @@ You publish a release here, and every site shows the normal WordPress
 
 ## The three steps
 
+## Picking the number
+
+Three parts, `MAJOR.MINOR.PATCH` — and the last one does most of the work:
+
+| Change | Bump | Example |
+|---|---|---|
+| Styling tweak, wording, bug fix | **PATCH** | 4.6.0 → 4.6.1 |
+| A new capability or setting | **MINOR** | 4.6.1 → 4.7.0 |
+| Something that breaks existing sites | **MAJOR** | 4.7.0 → 5.0.0 |
+
+Most releases are patches. Reserve the middle number for things an editor
+would actually notice as new — a new field, a new shortcode, a new setting.
+Bumping it for a colour change makes the history impossible to read back.
+
 **1. Change the version number in two places** in `factcrescendo-publisher.php`:
 
 ```
