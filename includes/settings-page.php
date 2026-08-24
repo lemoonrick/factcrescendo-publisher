@@ -85,7 +85,6 @@ function fc_sanitize_banner_html( $input ) {
 function fc_render_settings_page() {
     if ( ! current_user_can( 'manage_options' ) ) return;
 
-    $active_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'general';
     ?>
     <style>
     .fc-settings-wrap { max-width: 760px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }

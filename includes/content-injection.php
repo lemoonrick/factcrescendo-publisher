@@ -117,13 +117,17 @@ function fc_rating_tone( $rating ) {
 
 // ── FACT CARD ─────────────────────────────────────────────────────────────
 /**
- * The featured image, full width of the content column, with a slim strip
- * across the bottom carrying the claim and the finding.
+ * Two pieces: the featured image at full content width, then a findings bar
+ * directly beneath it carrying the claim, the verdict and the fact.
  *
- * Deliberately plain: white card, one image, one strip. No screenshot
- * export, no inlined base64 images, no social icons or phone number baked
- * into the graphic. The strip is sized by its text, so it stays slim as
- * long as the claim and fact are written tightly.
+ * The bar used to be an overlay sitting on the picture, which clipped the
+ * FACT CHECKED stamp burned into the artwork. Nothing covers the image now
+ * except the site logo in the corner.
+ *
+ * Deliberately plain: no screenshot export, no inlined base64 images, no
+ * social icons or phone number baked into the graphic. The bar is sized by
+ * its text, so it stays compact as long as the claim and fact are written
+ * tightly.
  *
  * Where this appears: at the start of the article body by default, or
  * wherever the editor typed [fact_card] — see fc_inject_blocks().
@@ -153,7 +157,7 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
     $claim   = trim( (string) $claim );
     $fact    = trim( (string) $fact );
 
-    // Nothing to show at all — don't render an empty bordered box.
+    // Nothing to show at all — don't render an empty box.
     if ( ! $has_img && $claim === '' && $fact === '' ) return '';
 
     $tone = fc_rating_tone( $rating );
@@ -161,90 +165,91 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
     ob_start();
     ?>
     <style>
-    /* Light card, tuned to the site: white ground, brand-red accents on the
-       verdict, small square-ish pills like the category tags on the homepage.
-       font-family:inherit means the card picks up whichever typeface the
-       theme is already using, so it never looks bolted on. */
-    .fc-hero {
-        /* No border for now. To switch one on later, the only change needed
-           here is: border:1.5px solid var(--fc-accent); */
-        --fc-accent:#e31b23;
-        background:#ffffff; border-radius:8px;
-        overflow:hidden; margin:0 0 26px; font-family:inherit;
-    }
+    /* Two clean pieces: the picture, then the findings.
+       The bar used to sit ON the image, which clipped the FACT CHECKED
+       stamp burned into the artwork. It now sits below, so the image is
+       never covered by anything.
+
+       font-family:inherit means the card takes the theme's own typeface. */
+    .fc-hero { background:#ffffff; margin:0 0 28px; font-family:inherit; }
+
     .fc-hero-media { position:relative; margin:0; padding:0; line-height:0; }
     .fc-hero-img { width:100%; height:auto; display:block; }
-    .fc-hero-logo { position:absolute; top:14px; left:14px; height:30px; width:auto; max-width:36%; object-fit:contain; filter:drop-shadow(0 1px 4px rgba(0,0,0,0.35)); }
+    .fc-hero-logo { position:absolute; top:16px; left:16px; height:30px; width:auto; max-width:36%; object-fit:contain; filter:drop-shadow(0 1px 4px rgba(0,0,0,0.35)); }
 
-    /* The overlay. Deliberately light and quiet — a frosted white panel, not
-       a heavy black bar. The photo still reads through it. Height follows
-       the text, so there is no fixed height and no aspect ratio. */
-    .fc-hero-strip {
-        position:absolute; left:0; right:0; bottom:0;
-        background:rgba(255,255,255,0.93);
-        -webkit-backdrop-filter:blur(8px) saturate(1.15);
-        backdrop-filter:blur(8px) saturate(1.15);
-        border-top:1px solid rgba(15,23,42,0.07);
-        padding:11px 15px 12px; display:flex; flex-direction:column; gap:4px;
-    }
-    .fc-hero-row { display:flex; gap:10px; align-items:baseline; margin:0; padding:0; }
-    .fc-hero-label { flex:0 0 42px; font-size:10px; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; color:#94a0b0 !important; line-height:1.7; }
-    .fc-hero-text { font-size:14px; line-height:1.45; color:#131a26 !important; margin:0; padding:0; }
+    /* The findings bar. One strong red rule tying it to the picture, then
+       two plainly-set rows. The claim sits back on a tinted ground; the
+       verdict and fact come forward on white. That contrast is what makes
+       it read at a glance, rather than colour or decoration. */
+    .fc-hero-strip { border-top:3px solid #e31b23; background:#ffffff; }
 
-    /* Verdict pill. Same shape and weight as the category tags on the site. */
-    .fc-hero-verdict { display:inline-block; font-size:10px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; color:#ffffff !important; padding:2px 7px; border-radius:4px; margin-right:7px; }
+    .fc-hero-row { display:flex; gap:16px; align-items:baseline; margin:0; padding:13px 18px; }
+    .fc-hero-row + .fc-hero-row { border-top:1px solid #e8ebef; }
+    .fc-hero-row-claim { background:#f4f6f8; }
+
+    .fc-hero-label { flex:0 0 46px; font-size:10px; font-weight:700; letter-spacing:1.1px; text-transform:uppercase; color:#7c8798 !important; line-height:1.9; }
+    .fc-hero-text { font-size:15px; line-height:1.55; color:#1a2231 !important; margin:0; padding:0; }
+    .fc-hero-row-fact .fc-hero-text { font-weight:500; }
+
+    /* Verdict. Solid, small radius — the same shape as the category tags
+       already used across the site. */
+    .fc-hero-verdict { display:inline-block; font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#ffffff !important; padding:3px 9px; border-radius:3px; margin-right:9px; white-space:nowrap; }
     .fc-hero-verdict.fc-v-false { background:#e31b23; }
-    .fc-hero-verdict.fc-v-warn  { background:#d97706; }
+    .fc-hero-verdict.fc-v-warn  { background:#c2701a; }
     .fc-hero-verdict.fc-v-true  { background:#15803d; }
 
-    /* No featured image — the strip becomes a plain block instead of an overlay. */
-    .fc-hero--no-img .fc-hero-strip { position:static; background:#f8fafc; -webkit-backdrop-filter:none; backdrop-filter:none; border-top:0; }
-
     @media (max-width:600px) {
-        .fc-hero-strip { padding:9px 11px 10px; gap:3px; }
-        .fc-hero-text { font-size:12.5px; line-height:1.4; }
-        .fc-hero-label { flex-basis:34px; font-size:9px; }
-        .fc-hero-verdict { font-size:9px; padding:2px 6px; margin-right:5px; }
-        .fc-hero-logo { height:22px; top:10px; left:10px; }
+        .fc-hero-row { padding:11px 13px; gap:11px; }
+        .fc-hero-text { font-size:13.5px; line-height:1.5; }
+        .fc-hero-label { flex-basis:38px; font-size:9px; letter-spacing:0.9px; }
+        .fc-hero-verdict { font-size:10px; padding:2px 7px; margin-right:7px; }
+        .fc-hero-logo { height:22px; top:11px; left:11px; }
     }
     </style>
 
-    <div class="fc-hero <?php echo $has_img ? '' : 'fc-hero--no-img'; ?>">
+    <div class="fc-hero">
+
+        <?php if ( $has_img ) : ?>
         <figure class="fc-hero-media">
             <?php
-            // Already escaped by WordPress.
+            // Already escaped by WordPress. Nothing is layered over the
+            // picture except the logo, so any stamp burned into the artwork
+            // stays fully visible.
             echo $img_html;
             ?>
 
-            <?php if ( $has_img && $logo_url ) : ?>
+            <?php if ( $logo_url ) : ?>
             <img src="<?php echo esc_url( $logo_url ); ?>" class="fc-hero-logo" alt="">
             <?php endif; ?>
+        </figure>
+        <?php endif; ?>
 
-            <?php if ( $claim !== '' || $fact !== '' ) : ?>
-            <div class="fc-hero-strip">
+        <?php if ( $claim !== '' || $fact !== '' ) : ?>
+        <div class="fc-hero-strip">
 
-                <?php /* Divs, not paragraphs: keeps theme paragraph styling out
-                         of the strip, and keeps the narrator from ever treating
-                         the claim and fact as article text. */ ?>
+            <?php /* Divs, not paragraphs: keeps theme paragraph styling out
+                     of the bar, and keeps the narrator from ever treating the
+                     claim and fact as article text. */ ?>
 
-                <?php if ( $claim !== '' ) : ?>
-                <div class="fc-hero-row">
-                    <span class="fc-hero-label">Claim</span>
-                    <span class="fc-hero-text"><?php echo esc_html( $claim ); ?></span>
-                </div>
-                <?php endif; ?>
-
-                <?php if ( $fact !== '' ) : ?>
-                <div class="fc-hero-row">
-                    <span class="fc-hero-label">Fact</span>
-                    <span class="fc-hero-text"><?php if ( $rating_label ) : ?><span class="fc-hero-verdict fc-v-<?php echo esc_attr( $tone ); ?>"><?php echo esc_html( $rating_label ); ?></span><?php endif; ?><?php echo esc_html( $fact ); ?></span>
-                </div>
-                <?php endif; ?>
-
+            <?php if ( $claim !== '' ) : ?>
+            <div class="fc-hero-row fc-hero-row-claim">
+                <span class="fc-hero-label">Claim</span>
+                <span class="fc-hero-text"><?php echo esc_html( $claim ); ?></span>
             </div>
             <?php endif; ?>
-        </figure>
+
+            <?php if ( $fact !== '' ) : ?>
+            <div class="fc-hero-row fc-hero-row-fact">
+                <span class="fc-hero-label">Fact</span>
+                <span class="fc-hero-text"><?php if ( $rating_label ) : ?><span class="fc-hero-verdict fc-v-<?php echo esc_attr( $tone ); ?>"><?php echo esc_html( $rating_label ); ?></span><?php endif; ?><?php echo esc_html( $fact ); ?></span>
+            </div>
+            <?php endif; ?>
+
+        </div>
+        <?php endif; ?>
+
     </div>
+
     <?php
     return ob_get_clean();
 }
@@ -691,7 +696,7 @@ function fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_
     .fc-article-card { position:relative; display:flex; align-items:center; background:#ffffff !important; border:1px solid #e2e8f0 !important; border-radius:16px; padding:32px; margin:40px 0; box-shadow:0 10px 40px -10px rgba(0,0,0,0.08); font-family:system-ui,-apple-system,sans-serif; gap:32px; overflow:hidden; transition:transform 0.3s ease, box-shadow 0.3s ease; z-index:1; }
     .fc-article-card:hover { transform:translateY(-2px); box-shadow:0 15px 50px -15px rgba(0,0,0,0.12); }
     .fc-article-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:6px; background:linear-gradient(180deg,#e31b23 0%,#ff4b4b 100%); border-radius:16px 0 0 16px; z-index:2; }
-    .fc-article-card::after { content:attr(data-rating); position:absolute; right:-10px; bottom:-25px; font-size:110px; font-weight:900; color:#e31b23; opacity:0.04; text-transform:uppercase; pointer-events:none; user-select:none; z-index:-1; white-space:nowrap; }
+    .fc-article-card::after { content:attr(data-rating); position:absolute; right:-10px; bottom:-25px; font-size:110px; font-weight:900; color:#e31b23; opacity:0.09; text-transform:uppercase; pointer-events:none; user-select:none; z-index:-1; white-space:nowrap; }
     .fc-stamp-wrapper { position:relative; flex-shrink:0; z-index:2; animation:fc-stamp-in 0.5s cubic-bezier(0.175,0.885,0.32,1.275) both; }
     .fc-stamp-wrapper img { width:110px; height:110px; object-fit:contain; filter:drop-shadow(0 8px 16px rgba(227,27,35,0.25)); transition:transform 0.3s cubic-bezier(0.175,0.885,0.32,1.275), filter 0.3s ease; }
     .fc-article-card:hover .fc-stamp-wrapper img { transform:scale(1.08) rotate(-5deg); filter:drop-shadow(0 12px 24px rgba(227,27,35,0.4)) brightness(1.05); }
@@ -781,7 +786,28 @@ function fc_get_rating_label( $rating ) {
         'insight'         => 'Insight',
         'news'            => 'News',
     ];
-    return $labels[ strtolower( (string) $rating ) ] ?? ucfirst( (string) $rating );
+    $key = strtolower( (string) $rating );
+
+    if ( isset( $labels[ $key ] ) ) return $labels[ $key ];
+
+    /*
+     * An unrecognised rating. The editor's dropdown only offers the eight
+     * above, but fc_rating is registered as post meta, and anything with
+     * edit_posts can write arbitrary text to it through the REST meta
+     * endpoint — the dropdown is not a guarantee about what is stored.
+     *
+     * This label ends up in the ClaimReview markup, so it is stripped of
+     * tags and capped here rather than passed through untouched. Every HTML
+     * use of it is escaped at the point of output as well.
+     */
+    $label = wp_strip_all_tags( (string) $rating );
+    $label = trim( preg_replace( '/\s+/', ' ', $label ) );
+
+    if ( function_exists( 'mb_substr' ) && mb_strlen( $label ) > 60 ) {
+        $label = mb_substr( $label, 0, 60 );
+    }
+
+    return ucfirst( $label );
 }
 
 // ── GLOBAL ARTICLE SPACING FIX ────────────────────────────────────────────────

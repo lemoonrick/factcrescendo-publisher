@@ -141,8 +141,24 @@ function fc_inject_claim_review_schema() {
 
     $already_emitted = true;
 
+    /*
+     * Encoding flags, chosen for safety rather than tidiness:
+     *
+     * JSON_HEX_TAG turns < and > into < and >, and slashes are
+     * left escaped (JSON_UNESCAPED_SLASHES is deliberately NOT set). Between
+     * them, no value in this block can close the <script> tag it sits in,
+     * whatever it contains.
+     *
+     * Everything reaching $schema is already stripped of tags, but the
+     * fc_claimreview_schema filter above lets a site add its own values
+     * afterwards, and those have had no such treatment. This makes the
+     * output safe regardless.
+     *
+     * JSON_UNESCAPED_UNICODE stays so Hindi, Marathi and Khmer text remains
+     * readable rather than becoming a wall of escape sequences.
+     */
     echo "\n" . '<script type="application/ld+json">'
-        . wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )
+        . wp_json_encode( $schema, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG )
         . '</script>' . "\n";
 }
 
