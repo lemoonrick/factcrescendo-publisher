@@ -184,6 +184,15 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
         box-shadow:0 1px 2px rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15);
     }
     .fc-hero-img { width:100%; height:auto; display:block; }
+
+    /* Most news themes add a bottom margin to every image in article
+       content. Inside the figure's overflow:hidden that becomes a pale band
+       under the photo. Two class names here so these win on specificity
+       against a theme's own .entry-content img rule. */
+    .fc-hero .fc-hero-media { margin:0 0 14px !important; padding:0 !important; }
+    .fc-hero .fc-hero-img,
+    .fc-hero .fc-hero-logo { margin:0 !important; padding:0 !important; border-radius:0; }
+    .fc-hero .fc-hero-strip { margin:0 !important; }
     .fc-hero-logo { position:absolute; top:16px; left:16px; height:30px; width:auto; max-width:36%; object-fit:contain; filter:drop-shadow(0 1px 4px rgba(0,0,0,0.35)); }
 
     .fc-hero-strip {
@@ -220,7 +229,7 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
     .fc-hero-verdict.fc-v-true  { background:#1e8e3e; }
 
     @media (max-width:600px) {
-        .fc-hero-media { border-radius:10px; margin-bottom:11px; }
+        .fc-hero .fc-hero-media { border-radius:10px; margin-bottom:11px !important; }
         .fc-hero-strip { border-radius:10px; }
         .fc-hero-row { padding:12px 14px; gap:12px; }
         .fc-hero-text { font-size:13.5px; line-height:1.55; }
@@ -841,14 +850,17 @@ function fc_global_content_spacing() {
     if ( ! is_singular( 'post' ) ) return;
     ?>
     <style>
-        /* Automatically add spacing below all images, figures, and embeds */
-        .entry-content figure, 
-        .entry-content iframe, 
-        .entry-content img,
+        /* Spacing below images, figures and embeds written by the editor.
+           The fact card is excluded by name: its own picture is inside a
+           clipped, rounded container, so a bottom margin there showed up as
+           a pale band under the photo with nothing behind it. */
+        .entry-content figure:not(.fc-hero-media),
+        .entry-content iframe,
+        .entry-content img:not(.fc-hero-img):not(.fc-hero-logo),
         .entry-content .wp-block-embed,
-        .post-content figure, 
-        .post-content iframe, 
-        .post-content img,
+        .post-content figure:not(.fc-hero-media),
+        .post-content iframe,
+        .post-content img:not(.fc-hero-img):not(.fc-hero-logo),
         .post-content .wp-block-embed {
             margin-bottom: 16px !important;
         }
