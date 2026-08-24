@@ -172,17 +172,24 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
        true. Colour does the separating, so no borders are needed.
 
        font-family:inherit keeps the theme's typeface. */
-    .fc-hero {
-        background:#ffffff; border-radius:12px; overflow:hidden;
-        box-shadow:0 1px 2px rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15);
-        margin:0 0 28px; font-family:inherit;
-    }
+    /* Two separate Material surfaces, not one card: the picture stands on
+       its own, then a gap, then the findings. Each has its own corners and
+       its own elevation so they read as two objects rather than one block
+       split by a line. */
+    .fc-hero { background:transparent; margin:0 0 28px; font-family:inherit; }
 
-    .fc-hero-media { position:relative; margin:0; padding:0; line-height:0; }
+    .fc-hero-media {
+        position:relative; margin:0 0 14px; padding:0; line-height:0;
+        border-radius:12px; overflow:hidden;
+        box-shadow:0 1px 2px rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15);
+    }
     .fc-hero-img { width:100%; height:auto; display:block; }
     .fc-hero-logo { position:absolute; top:16px; left:16px; height:30px; width:auto; max-width:36%; object-fit:contain; filter:drop-shadow(0 1px 4px rgba(0,0,0,0.35)); }
 
-    .fc-hero-strip { background:#ffffff; }
+    .fc-hero-strip {
+        background:#ffffff; border-radius:12px; overflow:hidden;
+        box-shadow:0 1px 2px rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15);
+    }
     .fc-hero-row { display:flex; gap:18px; align-items:baseline; margin:0; padding:15px 20px; }
 
     /* Material label: small, medium weight, tracked out. */
@@ -213,7 +220,8 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
     .fc-hero-verdict.fc-v-true  { background:#1e8e3e; }
 
     @media (max-width:600px) {
-        .fc-hero { border-radius:10px; }
+        .fc-hero-media { border-radius:10px; margin-bottom:11px; }
+        .fc-hero-strip { border-radius:10px; }
         .fc-hero-row { padding:12px 14px; gap:12px; }
         .fc-hero-text { font-size:13.5px; line-height:1.55; }
         .fc-hero-label { flex-basis:40px; font-size:10px; letter-spacing:0.7px; }

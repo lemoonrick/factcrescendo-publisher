@@ -213,6 +213,23 @@ function fc_check_for_update( $transient ) {
 
     $basename = fc_plugin_basename();
 
+    /*
+     * Which version is actually installed?
+     *
+     * NOT the FC_PUBLISHER_VERSION constant. During the request that performs
+     * an update, the old plugin file is already loaded in memory, so that
+     * constant still holds the version being replaced. WordPress rebuilds
+     * this transient in that same request, so using the constant announced
+     * an update to the version that had just been installed — and the notice
+     * appeared the moment an update finished.
+     *
+     * $transient->checked holds what WordPress has just read from the plugin
+     * files on disk, which is the real answer.
+     */
+    $installed = isset( $transient->checked[ $basename ] ) && $transient->checked[ $basename ] !== ''
+        ? $transient->checked[ $basename ]
+        : FC_PUBLISHER_VERSION;
+
     $info = (object) [
         'id'          => fc_update_repo(),
         'slug'        => fc_plugin_slug(),
@@ -224,12 +241,24 @@ function fc_check_for_update( $transient ) {
         'banners'     => [],
     ];
 
-    if ( version_compare( FC_PUBLISHER_VERSION, $release['version'], '<' ) ) {
+    /*
+     * Each branch clears the other list.
+     *
+     * WordPress draws the "new version available" row from ->response, and
+     * plenty of things re-save this transient without rebuilding it —
+     * activating a plugin, clearing caches, other plugins touching it. Those
+     * pass the existing ->response straight through. Adding to ->no_update
+     * without removing the old ->response entry left the notice on screen
+     * permanently, even once the newer version was installed.
+     */
+    if ( version_compare( $installed, $release['version'], '<' ) ) {
         $transient->response[ $basename ] = $info;
+        unset( $transient->no_update[ $basename ] );
     } else {
         // Telling WordPress "no update needed" keeps the plugin off the
         // "unknown origin" list and stops repeat lookups.
         $transient->no_update[ $basename ] = $info;
+        unset( $transient->response[ $basename ] );
     }
 
     return $transient;
@@ -278,6 +307,33 @@ function fc_format_release_notes( $notes ) {
  * name as the plugin's identity, so without this the update would land as
  * a separate, deactivated copy. Rename it to the real folder first.
  */
+/**
+ * After this plugin is updated, throw away both cached answers so the next
+ * check reads the real state rather than what was true before the update.
+ *
+ * Belt and braces alongside the ->response / ->no_update handling above: it
+ * means a stale notice cannot survive the update that resolves it.
+ */
+add_action( 'upgrader_process_complete', 'fc_clear_cache_after_update', 10, 2 );
+
+function fc_clear_cache_after_update( $upgrader, $hook_extra ) {
+
+    if ( empty( $hook_extra['type'] ) || $hook_extra['type'] !== 'plugin' ) return;
+
+    $plugins = ! empty( $hook_extra['plugins'] ) ? (array) $hook_extra['plugins'] : [];
+
+    // A single-plugin update reports itself under 'plugin' instead.
+    if ( ! empty( $hook_extra['plugin'] ) ) {
+        $plugins[] = $hook_extra['plugin'];
+    }
+
+    if ( ! in_array( fc_plugin_basename(), $plugins, true ) ) return;
+
+    delete_transient( FC_UPDATE_CACHE_KEY );
+    delete_site_transient( 'update_plugins' );
+}
+
+
 add_filter( 'upgrader_source_selection', 'fc_fix_update_folder_name', 10, 4 );
 
 function fc_fix_update_folder_name( $source, $remote_source, $upgrader, $hook_extra = null ) {
