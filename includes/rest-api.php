@@ -2,64 +2,15 @@
 /**
  * REST API
  *
- * 1. Registers meta fields so they appear in the standard WP REST API
- *    response under /wp-json/wp/v2/posts/<id> → meta{}
- * 2. GET /wp-json/fc/v1/post/<id>      — single post, all fact-check + audio data
- * 3. GET /wp-json/fc/v1/posts          — paginated list of fact-check posts
+ * GET /wp-json/fc/v1/post/<id>  — single post, all fact-check + audio data
+ * GET /wp-json/fc/v1/posts       — paginated list of fact-check posts
  *
- * All endpoints are read-only. Writing to any of these meta keys via the
- * REST API requires edit_posts capability (see auth_callback below) —
- * there is no public write path anywhere in this file.
+ * Both are read-only. The fields also appear in the standard
+ * /wp-json/wp/v2/posts/<id> response under meta{}; that registration, and
+ * who may write to them, lives in fields.php.
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
-
-
-// ── Expose fields in standard WP REST API ───────────────────────────────────
-
-add_action( 'init', 'fc_register_rest_meta' );
-
-function fc_register_rest_meta() {
-    $fields = [
-        'fc_is_fact_check'  => 'boolean',
-        'fc_rating'         => 'string',
-        'fc_claim'          => 'string',
-        'fc_fact'           => 'string',
-        'fc_audio_url'      => 'string',
-        'fc_audio_status'   => 'string',
-    ];
-
-    foreach ( $fields as $key => $type ) {
-        register_post_meta( 'post', $key, [
-            'type'          => $type,
-            'single'        => true,
-            'show_in_rest'  => true,
-            'auth_callback' => function() {
-                return current_user_can( 'edit_posts' );
-            },
-        ] );
-    }
-}
-
-
-// ── ACF availability ─────────────────────────────────────────────────────────
-/**
- * These endpoints are public, so they must never fatal. If ACF is switched
- * off — during an update, a plugin conflict, or by accident — get_field()
- * no longer exists and every request here would return a 500 to the open
- * internet. Answer with a clean 503 instead.
- */
-function fc_acf_ready() {
-    return function_exists( 'get_field' );
-}
-
-function fc_acf_unavailable() {
-    return new WP_Error(
-        'fc_fields_unavailable',
-        'Fact check fields are unavailable on this site right now.',
-        [ 'status' => 503 ]
-    );
-}
 
 
 // ── Single post endpoint ─────────────────────────────────────────────────────
@@ -87,19 +38,17 @@ function fc_rest_get_post( $request ) {
         return new WP_Error( 'not_found', 'Post not found.', [ 'status' => 404 ] );
     }
 
-    if ( ! fc_acf_ready() ) return fc_acf_unavailable();
-
-    $rating = get_field( 'fc_rating', $post_id );
+    $rating = fc_meta( 'fc_rating', $post_id );
 
     return rest_ensure_response( [
         'id'            => $post_id,
         'title'         => get_the_title( $post_id ),
         'url'           => get_permalink( $post_id ),
-        'is_fact_check' => (bool) get_field( 'fc_is_fact_check', $post_id ),
+        'is_fact_check' => fc_is_fact_check( $post_id ),
         'rating'        => $rating,
         'rating_label'  => fc_get_rating_label( $rating ),
-        'claim'         => get_field( 'fc_claim', $post_id ),
-        'fact'          => get_field( 'fc_fact', $post_id ),
+        'claim'         => fc_meta( 'fc_claim', $post_id ),
+        'fact'          => fc_meta( 'fc_fact', $post_id ),
         'stamp_url'     => fc_get_stamp_url( $rating ),
         'audio_url'     => get_post_meta( $post_id, 'fc_audio_url', true ) ?: null,
         'audio_status'  => get_post_meta( $post_id, 'fc_audio_status', true ) ?: 'none',
@@ -125,8 +74,6 @@ function fc_register_bulk_endpoint() {
 }
 
 function fc_rest_get_posts( $request ) {
-    if ( ! fc_acf_ready() ) return fc_acf_unavailable();
-
     $page = $request->get_param( 'page' ) ? max( 1, (int) $request->get_param( 'page' ) ) : 1;
 
     $query = new WP_Query( [
@@ -145,15 +92,15 @@ function fc_rest_get_posts( $request ) {
 
     $data = [];
     foreach ( $query->posts as $post ) {
-        $rating = get_field( 'fc_rating', $post->ID );
+        $rating = fc_meta( 'fc_rating', $post->ID );
         $data[] = [
             'id'           => $post->ID,
             'title'        => get_the_title( $post->ID ),
             'url'          => get_permalink( $post->ID ),
             'rating'       => $rating,
             'rating_label' => fc_get_rating_label( $rating ),
-            'claim'        => get_field( 'fc_claim', $post->ID ),
-            'fact'         => get_field( 'fc_fact', $post->ID ),
+            'claim'        => fc_meta( 'fc_claim', $post->ID ),
+            'fact'         => fc_meta( 'fc_fact', $post->ID ),
             'stamp_url'    => fc_get_stamp_url( $rating ),
             'audio_url'    => get_post_meta( $post->ID, 'fc_audio_url', true ) ?: null,
         ];

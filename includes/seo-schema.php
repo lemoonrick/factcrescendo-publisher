@@ -36,7 +36,6 @@ function fc_inject_claim_review_schema() {
     if ( $already_emitted ) return;
 
     if ( ! is_singular( 'post' ) ) return;
-    if ( ! function_exists( 'get_field' ) ) return;
 
     $post_id = get_the_ID();
     if ( ! $post_id ) return;
@@ -46,13 +45,12 @@ function fc_inject_claim_review_schema() {
     $noindex = get_post_meta( $post_id, '_yoast_wpseo_meta-robots-noindex', true );
     if ( $noindex === '1' ) return;
 
-    $is_fc = (bool) get_field( 'fc_is_fact_check', $post_id );
-    if ( ! $is_fc ) return;
+    if ( ! fc_is_fact_check( $post_id ) ) return;
 
-    $rating = get_field( 'fc_rating', $post_id );
+    $rating = fc_meta( 'fc_rating', $post_id );
     if ( empty( $rating ) ) return;
 
-    $claim        = trim( (string) get_field( 'fc_claim', $post_id ) );
+    $claim        = trim( (string) fc_meta( 'fc_claim', $post_id ) );
     $rating_label = fc_get_rating_label( $rating );
     $rating_value = fc_get_schema_rating_value( $rating );
     $permalink    = get_permalink( $post_id );
@@ -87,7 +85,7 @@ function fc_inject_claim_review_schema() {
         'datePublished' => $date_published,
     ];
 
-    $source_url = trim( (string) get_field( 'fc_claim_source_url', $post_id ) );
+    $source_url = trim( (string) fc_meta( 'fc_claim_source_url', $post_id ) );
     if ( $source_url !== '' && wp_http_validate_url( $source_url ) ) {
         $item_reviewed['appearance'] = [
             '@type' => 'CreativeWork',
@@ -95,9 +93,9 @@ function fc_inject_claim_review_schema() {
         ];
     }
 
-    $claim_author = fc_trim_plain( (string) get_field( 'fc_claim_author', $post_id ), 100 );
+    $claim_author = fc_trim_plain( (string) fc_meta( 'fc_claim_author', $post_id ), 100 );
     if ( $claim_author !== '' ) {
-        $author_type = get_field( 'fc_claim_author_type', $post_id );
+        $author_type = fc_meta( 'fc_claim_author_type', $post_id );
         $item_reviewed['author'] = [
             '@type' => $author_type === 'Organization' ? 'Organization' : 'Person',
             'name'  => $claim_author,

@@ -30,12 +30,9 @@ function fc_inject_blocks( $content ) {
     if ( ! is_singular( 'post' ) || is_admin() || is_feed() ) return $content;
 
     $post_id = get_the_ID();
-    if ( ! function_exists( 'get_field' ) ) return $content;
+    if ( ! fc_is_fact_check( $post_id ) ) return $content;
 
-    $is_fc = (bool) get_field( 'fc_is_fact_check', $post_id );
-    if ( ! $is_fc ) return $content;
-
-    $rating = get_field( 'fc_rating', $post_id );
+    $rating = fc_meta( 'fc_rating', $post_id );
     if ( empty( $rating ) ) return $content;
 
     $title        = get_the_title( $post_id );
@@ -44,19 +41,24 @@ function fc_inject_blocks( $content ) {
     $author_url   = get_author_posts_url( $author_id );
     $stamp_url    = fc_get_stamp_url( $rating );
     $rating_label = fc_get_rating_label( $rating );
-    $claim        = get_field( 'fc_claim', $post_id );
-    $fact         = get_field( 'fc_fact', $post_id );
+    $claim        = fc_meta( 'fc_claim', $post_id );
+    $fact         = fc_meta( 'fc_fact', $post_id );
     $logo_url     = get_option( 'fc_logo_url', '' );
 
     $fact_card    = fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $logo_url );
     $author_box   = fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_label );
-    $wa_banner    = fc_get_whatsapp_banner();
+    $wa_banner    = fc_get_whatsapp_banner( $content );
 
     list( $before, $after ) = fc_split_on_card_marker( $content );
 
     // Audio player is optional per site. When disabled, no player renders
     // and the article content is returned without the highlight wrapper.
-    $audio_enabled = get_option( 'fc_enable_audio', '1' ) === '1';
+    //
+    // The free voice is English only: browsers rarely ship voices for Indian
+    // languages, so elsewhere it would mostly not work. A post that already
+    // has a premium recording keeps playing it, whatever the language.
+    $audio_enabled = get_option( 'fc_enable_audio', '1' ) === '1'
+        && ( fc_site_lang() === 'en' || get_post_meta( $post_id, 'fc_audio_url', true ) );
 
     if ( $audio_enabled ) {
         $audio_player    = fc_build_audio_player( $post_id, $title, $claim, $fact );
@@ -763,17 +765,41 @@ function fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_
 }
 
 // ── WHATSAPP BANNER ────────────────────────────────────────────────────────
-function fc_get_whatsapp_banner() {
-    $html = get_option( 'fc_whatsapp_banner_html', '' );
-    if ( empty( trim( $html ) ) ) return '';
+/**
+ * The banner at the end of the article.
+ *
+ * Comes from this site's entry in the site list (sites.php), so nothing is
+ * pasted anywhere. Two exceptions, both kept so nothing changes underfoot:
+ *
+ *  - Banner HTML already saved under Settings is used instead, until it is
+ *    cleared there.
+ *  - An article that already has a WhatsApp link written into it — every
+ *    article from before the plugin, where editors pasted the banner by
+ *    hand — gets no second one.
+ *
+ * Can be turned off per site under Settings.
+ */
+function fc_get_whatsapp_banner( $content = '' ) {
+    if ( get_option( 'fc_show_whatsapp_banner', '1' ) !== '1' ) return '';
 
-    // The banner is admin-pasted HTML with its own colours. Some themes'
-    // dark mode was inverting its text to white on its white card, making
-    // it unreadable. `color-scheme: light` forces this subtree to render
-    // in light mode so the banner always looks the way it was designed,
-    // regardless of the visitor's theme or OS setting.
-    $style = 'margin:16px 0; color-scheme:light;';
-    return '<div class="fc-whatsapp-banner" style="' . esc_attr( $style ) . '">' . $html . '</div>';
+    if ( preg_match( '#api\.whatsapp\.com/send|wa\.me/#i', (string) $content ) ) return '';
+
+    // Pasted banners carry their own colours. Some themes' dark mode turned
+    // their text white on a white card; color-scheme:light stops that.
+    $pasted = (string) get_option( 'fc_whatsapp_banner_html', '' );
+    if ( trim( $pasted ) !== '' ) {
+        // Already cleaned against an allowlist when it was saved.
+        return '<div class="fc-whatsapp-banner" style="margin:16px 0; color-scheme:light;">' . $pasted . '</div>';
+    }
+
+    $site = fc_site_profile();
+    if ( $site['whatsapp_url'] === '' || $site['banner_image'] === '' ) return '';
+
+    return '<figure class="fc-whatsapp-banner" style="margin:28px 0;">'
+        . '<a href="' . esc_url( $site['whatsapp_url'] ) . '" target="_blank" rel="noopener noreferrer">'
+        . '<img src="' . esc_url( $site['banner_image'] ) . '" alt="' . esc_attr( 'Send us a message on WhatsApp' ) . '"'
+        . ' loading="lazy" decoding="async" style="display:block; width:100%; height:auto; margin:0;">'
+        . '</a></figure>';
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -808,16 +834,7 @@ function fc_get_stamp_url( $rating ) {
 }
 
 function fc_get_rating_label( $rating ) {
-    $labels = [
-        'false'           => 'False',
-        'partly-false'    => 'Partly False',
-        'misleading'      => 'Misleading',
-        'missing-context' => 'Missing Context',
-        'satire'          => 'Satire',
-        'altered'         => 'Altered',
-        'insight'         => 'Insight',
-        'news'            => 'News',
-    ];
+    $labels = fc_rating_choices();
     $key = strtolower( (string) $rating );
 
     if ( isset( $labels[ $key ] ) ) return $labels[ $key ];

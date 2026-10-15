@@ -38,18 +38,21 @@ function fc_register_settings() {
         'default'           => '',
     ] );
 
-    register_setting( 'fc_publisher_settings_group', 'fc_elevenlabs_api_key', [
+    register_setting( 'fc_publisher_settings_group', 'fc_show_whatsapp_banner', [
         'type'              => 'string',
-        'sanitize_callback' => 'sanitize_text_field',
-        'default'           => '',
+        'sanitize_callback' => function( $v ) { return $v === '1' ? '1' : '0'; },
+        'default'           => '1',
     ] );
 
-    register_setting( 'fc_publisher_settings_group', 'fc_elevenlabs_voice_id', [
+    // Which site-list entry to use. Empty means "work it out from the
+    // address", which is right everywhere except a staging copy.
+    register_setting( 'fc_publisher_settings_group', 'fc_site_key', [
         'type'              => 'string',
         'sanitize_callback' => function( $v ) {
-            return preg_replace( '/[^a-zA-Z0-9]/', '', (string) $v );
+            $v = (string) $v;
+            return array_key_exists( $v, fc_site_profiles() ) ? $v : '';
         },
-        'default'           => '21m00Tcm4TlvDq8ikWAM',
+        'default'           => '',
     ] );
 }
 
@@ -140,12 +143,37 @@ function fc_render_settings_page() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
             <h1>FC Publisher Settings</h1>
         </div>
-        <p class="fc-settings-sub">Configure branding, sharing, and narration for this site. Each site keeps its own settings.</p>
+        <p class="fc-settings-sub">Most of this is automatic. Each site recognises itself from the site list built into the plugin.</p>
 
         <?php settings_errors( 'fc_publisher_settings_group' ); ?>
 
         <form method="post" action="options.php">
             <?php settings_fields( 'fc_publisher_settings_group' ); ?>
+
+            <?php
+            $fc_profiles = fc_site_profiles();
+            $fc_chosen   = (string) get_option( 'fc_site_key', '' );
+            $fc_key      = fc_site_key();
+            $fc_site     = fc_site_profile();
+            ?>
+            <div class="fc-settings-section">
+                <h2>This Site</h2>
+                <?php if ( $fc_key !== '' ) : ?>
+                <p class="fc-section-desc">Recognised as <strong><?php echo esc_html( $fc_site['label'] ); ?></strong> (<?php echo esc_html( $fc_key ); ?>)<?php echo $fc_chosen !== '' ? ' &mdash; chosen by hand below' : ''; ?>. The WhatsApp banner and number come from this entry.</p>
+                <?php else : ?>
+                <p class="fc-section-desc">This site's address isn't in the site list, so no WhatsApp banner is added. That's expected on staging copies and on sites that don't use a banner. To test as one of the listed sites, pick it below.</p>
+                <?php endif; ?>
+                <div class="fc-field">
+                    <label for="fc_site_key">Use the details of</label>
+                    <select id="fc_site_key" name="fc_site_key">
+                        <option value="">Automatic (from this site's address)</option>
+                        <?php foreach ( $fc_profiles as $key => $profile ) : ?>
+                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $fc_chosen, $key ); ?>><?php echo esc_html( ( $profile['label'] ?? $key ) . ' — ' . $key ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="fc-field-hint">Leave on Automatic on live sites.</p>
+                </div>
+            </div>
 
             <div class="fc-settings-section">
                 <h2>Branding</h2>
@@ -160,17 +188,35 @@ function fc_render_settings_page() {
 
             <div class="fc-settings-section">
                 <h2>WhatsApp Banner</h2>
-                <p class="fc-section-desc">Paste the banner HTML for this site's language. Appears at the end of every fact-check article.</p>
+                <p class="fc-section-desc">Added at the end of every fact-check article. Articles that already have a WhatsApp link pasted into them don't get a second one.</p>
+
                 <div class="fc-field">
-                    <label for="fc_whatsapp_banner_html">Banner HTML</label>
+                    <label class="fc-toggle">
+                        <input type="hidden" name="fc_show_whatsapp_banner" value="0">
+                        <input type="checkbox" name="fc_show_whatsapp_banner" value="1" <?php checked( get_option( 'fc_show_whatsapp_banner', '1' ), '1' ); ?>>
+                        <span class="fc-toggle-track"><span class="fc-toggle-thumb"></span></span>
+                        <span class="fc-toggle-text">Show the WhatsApp banner on this site</span>
+                    </label>
+                </div>
+
+                <?php if ( $fc_site['banner_image'] !== '' ) : ?>
+                <div class="fc-field">
+                    <label>This site's banner</label>
+                    <img src="<?php echo esc_url( $fc_site['banner_image'] ); ?>" alt="" style="max-width:360px; width:100%; height:auto; border-radius:8px; border:1px solid #e5e7eb;">
+                </div>
+                <?php endif; ?>
+
+                <details class="fc-field">
+                    <summary style="cursor:pointer; font-weight:600; font-size:13px; color:#334155;">Use a different banner (advanced)</summary>
+                    <p class="fc-field-hint">Leave this empty to use the built-in banner above. Anything pasted here replaces it.</p>
                     <textarea id="fc_whatsapp_banner_html" name="fc_whatsapp_banner_html" rows="7"><?php echo esc_textarea( get_option( 'fc_whatsapp_banner_html', '' ) ); ?></textarea>
                     <p class="fc-field-hint">Style blocks, links, images, and inline SVG icons are allowed. Script tags and event handlers are stripped automatically.</p>
-                </div>
+                </details>
             </div>
 
             <div class="fc-settings-section">
                 <h2>Audio Narration</h2>
-                <p class="fc-section-desc">The "Listen to this article" player reads the article aloud. Every visitor gets free browser narration automatically. Adding an ElevenLabs key upgrades specific posts to natural AI narration when the "Generate Audio Narration" toggle is on in the post editor.</p>
+                <p class="fc-section-desc">The "Listen to this article" player reads the article aloud with the visitor's own browser voice. Free, and shown on English sites only. This site's language: <strong><?php echo esc_html( fc_site_lang() ); ?></strong>.</p>
 
                 <div class="fc-field">
                     <label class="fc-toggle">
@@ -180,21 +226,6 @@ function fc_render_settings_page() {
                         <span class="fc-toggle-text">Show the audio player on this site</span>
                     </label>
                     <p class="fc-field-hint">Turn this off for sites that don't need narration. When off, no player appears and nothing about the article layout changes.</p>
-                </div>
-
-                <div class="fc-field">
-                    <label for="fc_elevenlabs_api_key">ElevenLabs API Key</label>
-                    <input type="password" id="fc_elevenlabs_api_key" name="fc_elevenlabs_api_key"
-                        value="<?php echo esc_attr( get_option( 'fc_elevenlabs_api_key', '' ) ); ?>"
-                        placeholder="sk_...">
-                    <p class="fc-field-hint">Stored on this site only — never exposed via the REST API or visible in page source.</p>
-                </div>
-                <div class="fc-field">
-                    <label for="fc_elevenlabs_voice_id">Voice ID</label>
-                    <input type="text" id="fc_elevenlabs_voice_id" name="fc_elevenlabs_voice_id"
-                        value="<?php echo esc_attr( get_option( 'fc_elevenlabs_voice_id', '21m00Tcm4TlvDq8ikWAM' ) ); ?>"
-                        placeholder="21m00Tcm4TlvDq8ikWAM">
-                    <p class="fc-field-hint">Find voice IDs in your ElevenLabs dashboard under Voices. Defaults to a standard English voice.</p>
                 </div>
             </div>
 
