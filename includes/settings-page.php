@@ -225,8 +225,10 @@ function fc_render_settings_page() {
                     <label for="fc_logo_url">Logo on the card</label>
                     <input type="url" id="fc_logo_url" name="fc_logo_url"
                         value="<?php echo esc_attr( get_option( 'fc_logo_url', '' ) ); ?>"
-                        placeholder="Leave empty to use the theme's logo">
-                    <p class="fc-field-hint"><?php echo fc_card_logo_url() !== '' ? 'Currently using: ' . esc_html( fc_card_logo_url() ) : 'No logo found — the card shows the site name instead.'; ?></p>
+                        placeholder="Leave empty to use the Fact Crescendo logo">
+                    <?php if ( fc_card_logo_url() !== '' ) : ?>
+                    <img src="<?php echo esc_url( fc_card_logo_url() ); ?>" alt="" style="height:40px; width:auto; margin-top:10px; display:block;">
+                    <?php endif; ?>
                 </div>
             </div>
 

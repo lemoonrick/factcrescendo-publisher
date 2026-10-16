@@ -212,7 +212,10 @@ $card = fc_build_card( $pid, 'misleading', 'Misleading', $base['fc_claim'], $bas
 check( 'no stamp, phone number or socials on the card', stripos( $card, 'stamp' ) === false && stripos( $card, 'whatsapp' ) === false && strpos( $card, '9049053770' ) === false );
 reset_options();
 check( 'no photo set: no empty photo frame', strpos( $html, '<figure class="fc-fc-photo"' ) === false );
-check( 'no logo anywhere: site name shown instead', strpos( $html, 'class="fc-fc-site"' ) !== false );
+check( 'Fact Crescendo logo shown by default', strpos( $html, 'assets/logo.png' ) !== false );
+add_filter( 'fc_card_logo_url', '__return_empty_string' );
+check( 'no logo: site name shown instead', strpos( render( $pid ), 'class="fc-fc-site"' ) !== false );
+remove_filter( 'fc_card_logo_url', '__return_empty_string' );
 check( 'card sits before the article text', strpos( $html, 'fc-fc-wrap' ) < strpos( $html, 'First paragraph' ) );
 check( 'false rating is red with an X', strpos( render( make_post( array_merge( $base, [ 'fc_rating' => 'false' ] ) ) ), 'fc-fc--red' ) !== false );
 

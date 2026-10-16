@@ -59,17 +59,13 @@ function fc_card_photo_id( $post_id ) {
     return $thumb;
 }
 
-/** The logo from Settings, else the theme's logo, else ''. */
+/** The logo from Settings, else the Fact Crescendo logo that ships with the plugin. */
 function fc_card_logo_url() {
     $url = (string) get_option( 'fc_logo_url', '' );
-    if ( $url !== '' ) return $url;
+    if ( $url === '' ) $url = FC_PUBLISHER_URL . 'assets/logo.png';
 
-    $logo_id = (int) get_theme_mod( 'custom_logo' );
-    if ( $logo_id ) {
-        $src = wp_get_attachment_image_url( $logo_id, 'medium' );
-        if ( $src ) return $src;
-    }
-    return '';
+    /** Filter: use another logo. Return '' to show the site's name instead. */
+    return (string) apply_filters( 'fc_card_logo_url', $url );
 }
 
 /** The fact without its **highlight** marks, for plain-text uses. */
