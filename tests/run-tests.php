@@ -96,6 +96,7 @@ function reset_options() {
     delete_option( 'fc_show_whatsapp_banner' );
     delete_option( 'fc_whatsapp_banner_html' );
     delete_option( 'fc_enable_audio' );
+    delete_option( 'fc_whatsapp_banner_style' );
 }
 
 wp_set_current_user( 1 );
@@ -383,7 +384,7 @@ check( 'www. address finds its entry', fc_site_key() === 'factcrescendo.com' && 
 remove_filter( 'home_url', $fake_home );
 
 foreach ( fc_site_profiles() as $key => $p ) {
-    check( "entry $key is complete", ! empty( $p['whatsapp_url'] ) && strpos( $p['banner_image'], 'https://' ) === 0 && ! empty( $p['label'] ) );
+    check( "entry $key is complete", ! empty( $p['whatsapp_url'] ) && ! empty( $p['whatsapp_number'] ) && isset( $p['join_language'] ) && strpos( $p['banner_image'], 'https://' ) === 0 && ! empty( $p['label'] ) );
 }
 
 
@@ -396,9 +397,25 @@ check( 'site not in the list: no banner', strpos( render( $pid ), 'fc-whatsapp-b
 
 update_option( 'fc_site_key', 'malayalam.factcrescendo.com' );
 $html = render( $pid );
-check( 'listed site: banner added', strpos( $html, 'Malayalam-2.png' ) !== false );
+check( 'listed site: new banner added', strpos( $html, 'class="fc-wa-card' ) !== false );
+check( 'banner shows the number', strpos( $html, '+91 90490 53770' ) !== false );
+check( 'banner says which language to send', strpos( $html, 'language as Malayalam' ) !== false );
 check( 'banner links to WhatsApp in a new tab', strpos( $html, 'api.whatsapp.com/send?phone=919049053770' ) !== false && strpos( $html, 'noopener' ) !== false );
-check( 'banner image has alt text', strpos( $html, 'alt="Send us a message on WhatsApp"' ) !== false );
+check( 'banner adds no headings to the article', strpos( substr( $html, strpos( $html, '<a class="fc-wa-card' ) ), '<h' ) === false );
+
+update_option( 'fc_whatsapp_banner_style', 'image' );
+$html = render( $pid );
+check( 'old picture banner can still be chosen', strpos( $html, 'Malayalam-2.png' ) !== false && strpos( $html, 'alt="Send us a message on WhatsApp"' ) !== false && strpos( $html, 'fc-wa-card' ) === false );
+delete_option( 'fc_whatsapp_banner_style' );
+
+update_option( 'fc_site_key', 'srilanka.factcrescendo.com' );
+$html = render( $pid );
+check( 'Sri Lanka: its own number, no broadcast line', strpos( $html, '+94 77 151 4696' ) !== false && strpos( $html, 'broadcast' ) === false );
+update_option( 'fc_site_key', 'malayalam.factcrescendo.com' );
+
+add_filter( 'fc_whatsapp_banner_text', $tr = function( $t ) { $t['button'] = '<b>Translated</b>'; return $t; } );
+check( 'banner words can be translated, and are escaped', strpos( render( $pid ), '&lt;b&gt;Translated&lt;/b&gt;' ) !== false );
+remove_filter( 'fc_whatsapp_banner_text', $tr );
 
 $pasted = make_post( $base, '<p>Body</p><figure><a href="https://api.whatsapp.com/send?phone=919049053770"><img src="x.png"></a></figure>' );
 check( 'article with a pasted banner gets no second one', strpos( render( $pasted ), 'fc-whatsapp-banner' ) === false );

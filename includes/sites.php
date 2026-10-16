@@ -19,56 +19,66 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  *  label           Shown in Settings so an admin can see which entry matched.
  *  lang            Two-letter language code. Decides whether the free
  *                  "Listen to this article" player appears (English only).
- *  whatsapp_url    Where the banner and the card's WhatsApp line link to.
- *  whatsapp_number Number as printed on the fact card.
- *  banner_image    The WhatsApp banner picture, as editors used to paste it.
+ *  whatsapp_url    Where the WhatsApp banner links to.
+ *  whatsapp_number The number as printed on the banner.
+ *  join_language   The language readers type to join the broadcast list.
+ *                  Empty means the site has no broadcast list.
+ *  banner_image    The old picture banner, kept for sites that prefer it.
  */
 function fc_site_profiles() {
 
     $india_whatsapp = 'https://api.whatsapp.com/send?phone=919049053770&text=Please%20type%20your%20Name%20and%20Language:%20';
     $sl_whatsapp    = 'https://api.whatsapp.com/send?phone=94771514696&text=Please%20send%20your%20query:%20';
 
-    $india = [ 'whatsapp_url' => $india_whatsapp, 'whatsapp_number' => '9049053770' ];
-    $sl    = [ 'whatsapp_url' => $sl_whatsapp,    'whatsapp_number' => '+94 77 151 4696' ];
+    $india = [ 'whatsapp_url' => $india_whatsapp, 'whatsapp_number' => '+91 90490 53770' ];
+    $sl    = [ 'whatsapp_url' => $sl_whatsapp,    'whatsapp_number' => '+94 77 151 4696', 'join_language' => '' ];
 
     $profiles = [
         'factcrescendo.com' => $india + [
             'label'        => 'Hindi',
+            'join_language' => 'Hindi',
             'lang'         => 'hi',
             'banner_image' => 'https://www.factcrescendo.com/wp-content/uploads/2020/03/T-Hindi-23.png',
         ],
         'english.factcrescendo.com' => $india + [
             'label'        => 'English',
+            'join_language' => 'English',
             'lang'         => 'en',
             'banner_image' => 'https://english.factcrescendo.com/wp-content/uploads/2021/03/English-2-scaled.jpg',
         ],
         'malayalam.factcrescendo.com' => $india + [
             'label'        => 'Malayalam',
+            'join_language' => 'Malayalam',
             'lang'         => 'ml',
             'banner_image' => 'https://malayalam.factcrescendo.com/wp-content/uploads/2021/03/Malayalam-2.png',
         ],
         'tamil.factcrescendo.com' => $india + [
             'label'        => 'Tamil',
+            'join_language' => 'Tamil',
             'lang'         => 'ta',
             'banner_image' => 'https://tamil.factcrescendo.com/wp-content/uploads/2021/03/Tamil-new.png',
         ],
         'gujarati.factcrescendo.com' => $india + [
             'label'        => 'Gujarati',
+            'join_language' => 'Gujarati',
             'lang'         => 'gu',
             'banner_image' => 'https://gujarati.factcrescendo.com/wp-content/uploads/2021/03/Gujarati-2.png',
         ],
         'odia.factcrescendo.com' => $india + [
             'label'        => 'Odia',
+            'join_language' => 'Odia',
             'lang'         => 'or',
             'banner_image' => 'https://odia.factcrescendo.com/wp-content/uploads/2021/03/Odia-2.png',
         ],
         'assamese.factcrescendo.com' => $india + [
             'label'        => 'Assamese',
+            'join_language' => 'Assamese',
             'lang'         => 'as',
             'banner_image' => 'https://assamese.factcrescendo.com/wp-content/uploads/2021/03/Assamese.png',
         ],
         'marathi.factcrescendo.com' => $india + [
             'label'        => 'Marathi',
+            'join_language' => 'Marathi',
             'lang'         => 'mr',
             'banner_image' => 'https://marathi.factcrescendo.com/wp-content/uploads/2021/03/Marathi-2-scaled.jpg',
         ],
@@ -120,6 +130,7 @@ function fc_site_profile() {
         'lang'            => '',
         'whatsapp_url'    => '',
         'whatsapp_number' => '',
+        'join_language'   => '',
         'banner_image'    => '',
     ], is_array( $profile ) ? $profile : [] );
 }

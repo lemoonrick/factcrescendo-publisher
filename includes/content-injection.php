@@ -457,24 +457,21 @@ function fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_
 /**
  * The banner at the end of the article.
  *
- * Comes from this site's entry in the site list (sites.php), so nothing is
- * pasted anywhere. Two exceptions, both kept so nothing changes underfoot:
+ * Built from this site's entry in the site list (sites.php), so nothing is
+ * pasted anywhere. Two exceptions:
+ *  - Banner HTML pasted under Settings is used instead, until cleared.
+ *  - An article with a WhatsApp link already written into it (older posts,
+ *    where editors pasted the banner by hand) gets no second one.
  *
- *  - Banner HTML already saved under Settings is used instead, until it is
- *    cleared there.
- *  - An article that already has a WhatsApp link written into it — every
- *    article from before the plugin, where editors pasted the banner by
- *    hand — gets no second one.
- *
- * Can be turned off per site under Settings.
+ * Settings choose the new banner (default), the old picture, or none.
  */
 function fc_get_whatsapp_banner( $content = '' ) {
     if ( get_option( 'fc_show_whatsapp_banner', '1' ) !== '1' ) return '';
 
     if ( preg_match( '#api\.whatsapp\.com/send|wa\.me/#i', (string) $content ) ) return '';
 
-    // Pasted banners carry their own colours. Some themes' dark mode turned
-    // their text white on a white card; color-scheme:light stops that.
+    // Pasted banners carry their own colours; color-scheme:light stops dark
+    // themes turning their text white.
     $pasted = (string) get_option( 'fc_whatsapp_banner_html', '' );
     if ( trim( $pasted ) !== '' ) {
         // Already cleaned against an allowlist when it was saved.
@@ -482,13 +479,104 @@ function fc_get_whatsapp_banner( $content = '' ) {
     }
 
     $site = fc_site_profile();
-    if ( $site['whatsapp_url'] === '' || $site['banner_image'] === '' ) return '';
+    if ( $site['whatsapp_url'] === '' ) return '';
 
-    return '<figure class="fc-whatsapp-banner" style="margin:28px 0;">'
-        . '<a href="' . esc_url( $site['whatsapp_url'] ) . '" target="_blank" rel="noopener noreferrer">'
-        . '<img src="' . esc_url( $site['banner_image'] ) . '" alt="' . esc_attr( 'Send us a message on WhatsApp' ) . '"'
-        . ' loading="lazy" decoding="async" style="display:block; width:100%; height:auto; margin:0;">'
-        . '</a></figure>';
+    if ( get_option( 'fc_whatsapp_banner_style', 'card' ) === 'image' ) {
+        if ( $site['banner_image'] === '' ) return '';
+        return '<figure class="fc-whatsapp-banner" style="margin:28px 0;">'
+            . '<a href="' . esc_url( $site['whatsapp_url'] ) . '" target="_blank" rel="noopener noreferrer">'
+            . '<img src="' . esc_url( $site['banner_image'] ) . '" alt="' . esc_attr( 'Send us a message on WhatsApp' ) . '"'
+            . ' loading="lazy" decoding="async" style="display:block; width:100%; height:auto; margin:0;">'
+            . '</a></figure>';
+    }
+
+    return fc_build_whatsapp_card( $site );
+}
+
+/** The words on the banner. */
+function fc_whatsapp_banner_text( $site ) {
+    $text = [
+        'title'  => 'Verify videos and images you receive on WhatsApp.',
+        'number' => 'Our WhatsApp number:',
+        'join'   => $site['join_language'] !== ''
+            ? sprintf( 'Send your name and language as %s to join our broadcast.', $site['join_language'] )
+            : 'Send us anything you want checked.',
+        'button' => 'Send to WhatsApp',
+    ];
+
+    /** Filter: change the banner's words, e.g. to translate them. */
+    return apply_filters( 'fc_whatsapp_banner_text', $text, $site );
+}
+
+/** The new WhatsApp banner: icon, message, number and a button. */
+function fc_build_whatsapp_card( $site ) {
+    $t    = fc_whatsapp_banner_text( $site );
+    $icon = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.198.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
+
+    ob_start();
+    ?>
+    <style>
+    /* Locked to light colours: themes can't restyle it or flip it in dark mode. */
+    .fc-wa-card, .fc-wa-card * { box-sizing:border-box !important; color-scheme:light !important; }
+    .fc-wa-card {
+        display:flex !important; align-items:center !important; justify-content:space-between !important;
+        background:#fff !important; color:#0f172a !important; -webkit-text-fill-color:#0f172a !important;
+        border:1px solid #e2e8f0 !important; border-left:5px solid #25d366 !important; border-radius:12px !important;
+        padding:18px 20px !important; margin:28px 0 !important; text-decoration:none !important; cursor:pointer !important;
+        font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important;
+        box-shadow:0 4px 6px -1px rgba(0,0,0,.05), 0 2px 4px -1px rgba(0,0,0,.03) !important;
+        transition:transform .2s ease, border-color .2s ease !important;
+    }
+    .fc-wa-card:link, .fc-wa-card:visited, .fc-wa-card:hover, .fc-wa-card:active { color:#0f172a !important; text-decoration:none !important; background:#fff !important; }
+    .fc-wa-card:hover { transform:translateY(-2px) !important; border-color:#cbd5e1 !important; border-left-color:#25d366 !important; }
+    .fc-wa-card:focus-visible { outline:3px solid rgba(37,211,102,.35) !important; outline-offset:3px !important; }
+
+    .fc-wa-content { display:flex !important; align-items:center !important; gap:15px !important; min-width:0; }
+    .fc-wa-icon { display:flex !important; align-items:center !important; justify-content:center !important; width:50px !important; height:50px !important; flex:0 0 50px !important; background:#dcf8c6 !important; border-radius:50% !important; }
+    .fc-wa-icon svg { width:28px !important; height:28px !important; }
+    .fc-wa-icon path { fill:#128c7e !important; }
+
+    .fc-wa-text { display:flex !important; flex-direction:column !important; gap:5px !important; min-width:0; }
+    .fc-wa-title { display:block !important; margin:0 !important; font-size:16px !important; font-weight:700 !important; line-height:1.35 !important; color:#0f172a !important; -webkit-text-fill-color:#0f172a !important; }
+    .fc-wa-desc { display:block !important; margin:0 !important; font-size:14px !important; line-height:1.55 !important; color:#475569 !important; -webkit-text-fill-color:#475569 !important; }
+    .fc-wa-number { display:inline-block !important; background:#dcf8c6 !important; color:#128c7e !important; -webkit-text-fill-color:#128c7e !important; padding:2px 7px !important; margin:0 3px !important; border-radius:5px !important; font-size:13px !important; font-weight:800 !important; letter-spacing:.3px !important; white-space:nowrap !important; }
+
+    .fc-wa-cta { display:flex !important; align-items:center !important; justify-content:center !important; gap:7px !important; margin-left:20px !important; padding:11px 18px !important; background:#25d366 !important; color:#fff !important; -webkit-text-fill-color:#fff !important; border-radius:999px !important; font-size:14px !important; font-weight:700 !important; white-space:nowrap !important; animation:fc-wa-pulse 2.5s infinite !important; }
+    .fc-wa-cta svg { width:17px !important; height:17px !important; }
+    .fc-wa-cta path { fill:#fff !important; }
+    .fc-wa-card:hover .fc-wa-cta { background:#128c7e !important; animation:none !important; }
+
+    @keyframes fc-wa-pulse { 0% { box-shadow:0 0 0 0 rgba(37,211,102,.45); } 70% { box-shadow:0 0 0 9px rgba(37,211,102,0); } 100% { box-shadow:0 0 0 0 rgba(37,211,102,0); } }
+    @media (prefers-reduced-motion: reduce) { .fc-wa-card, .fc-wa-cta { animation:none !important; transition:none !important; } }
+
+    @media (max-width: 650px) {
+        .fc-wa-card { flex-direction:column !important; text-align:center !important; padding:22px 18px !important; gap:18px !important; border-left:1px solid #e2e8f0 !important; border-top:5px solid #25d366 !important; }
+        .fc-wa-card:hover { border-left-color:#cbd5e1 !important; border-top-color:#25d366 !important; }
+        .fc-wa-content { flex-direction:column !important; gap:13px !important; }
+        .fc-wa-text { align-items:center !important; }
+        .fc-wa-desc { font-size:13.5px !important; }
+        .fc-wa-number { margin:3px 0 !important; }
+        .fc-wa-cta { width:100% !important; margin-left:0 !important; padding:12px 18px !important; }
+    }
+    </style>
+
+    <?php /* Spans, not headings or paragraphs: valid inside a link, and kept out of the article's outline. */ ?>
+    <a class="fc-wa-card fc-whatsapp-banner" href="<?php echo esc_url( $site['whatsapp_url'] ); ?>" target="_blank" rel="noopener noreferrer">
+        <span class="fc-wa-content">
+            <span class="fc-wa-icon"><?php echo $icon; // Fixed markup. ?></span>
+            <span class="fc-wa-text">
+                <span class="fc-wa-title"><?php echo esc_html( $t['title'] ); ?></span>
+                <span class="fc-wa-desc">
+                    <?php echo esc_html( $t['number'] ); ?>
+                    <span class="fc-wa-number"><?php echo esc_html( $site['whatsapp_number'] ); ?></span><br>
+                    <?php echo esc_html( $t['join'] ); ?>
+                </span>
+            </span>
+        </span>
+        <span class="fc-wa-cta"><?php echo $icon; // Fixed markup. ?><?php echo esc_html( $t['button'] ); ?></span>
+    </a>
+    <?php
+    return ob_get_clean();
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────

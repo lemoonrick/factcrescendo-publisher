@@ -46,6 +46,12 @@ function fc_register_settings() {
         'default'           => 'card',
     ] );
 
+    register_setting( 'fc_publisher_settings_group', 'fc_whatsapp_banner_style', [
+        'type'              => 'string',
+        'sanitize_callback' => function( $v ) { return $v === 'image' ? 'image' : 'card'; },
+        'default'           => 'card',
+    ] );
+
     register_setting( 'fc_publisher_settings_group', 'fc_featured_stamps', [
         'type'              => 'string',
         'sanitize_callback' => function( $v ) { return $v === '1' ? '1' : '0'; },
@@ -271,10 +277,22 @@ function fc_render_settings_page() {
                     </label>
                 </div>
 
-                <?php if ( $fc_site['banner_image'] !== '' ) : ?>
                 <div class="fc-field">
-                    <label>This site's banner</label>
+                    <label for="fc_whatsapp_banner_style">Banner style</label>
+                    <select id="fc_whatsapp_banner_style" name="fc_whatsapp_banner_style">
+                        <option value="card" <?php selected( get_option( 'fc_whatsapp_banner_style', 'card' ), 'card' ); ?>>New banner — works on phones (recommended)</option>
+                        <option value="image" <?php selected( get_option( 'fc_whatsapp_banner_style', 'card' ), 'image' ); ?>>Old picture banner</option>
+                    </select>
+                </div>
+
+                <?php if ( $fc_site['whatsapp_url'] !== '' ) : ?>
+                <div class="fc-field">
+                    <label>Preview</label>
+                    <div style="max-width:640px;"><?php echo fc_build_whatsapp_card( $fc_site ); // Escaped inside. ?></div>
+                    <?php if ( $fc_site['banner_image'] !== '' ) : ?>
+                    <p class="fc-field-hint">Old picture banner:</p>
                     <img src="<?php echo esc_url( $fc_site['banner_image'] ); ?>" alt="" style="max-width:360px; width:100%; height:auto; border-radius:8px; border:1px solid #e5e7eb;">
+                    <?php endif; ?>
                 </div>
                 <?php endif; ?>
 

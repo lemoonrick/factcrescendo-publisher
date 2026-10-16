@@ -3,8 +3,7 @@
  * checklist in the "Are you ready to publish?" panel.
  *
  * The fields are ordinary post meta registered in fields.php, so they save
- * together with the post — no separate save step. The classic editor gets
- * the equivalent box from fields.php instead.
+ * with the post. The classic editor gets the same fields from fields.php.
  *
  * Plain JavaScript using WordPress's own globals, so there is no build step.
  */
@@ -17,10 +16,11 @@
     var C           = wp.components;
     var editorPkg   = wp.editor || {};
     var editPostPkg = wp.editPost || {};
+    var blockEditor = wp.blockEditor || {};
     var SidePanel   = editorPkg.PluginDocumentSettingPanel || editPostPkg.PluginDocumentSettingPanel;
     var PrePublish  = editorPkg.PluginPrePublishPanel || editPostPkg.PluginPrePublishPanel;
-    var blockEditor = wp.blockEditor || {};
-    var settings    = window.fcEditor || { ratings: [], cardModes: [], badges: [], featuredHelp: '' };
+    var settings    = window.fcEditor || {};
+    var ratings     = settings.ratings || [];
 
     if ( ! SidePanel || ! useSelect || ! useDispatch ) return;
 
@@ -45,17 +45,33 @@
         return { type: data.type, meta: data.meta, hasImage: data.hasImage, set: set };
     }
 
-    /** True for '1', true or 1 — how the switch may arrive from the server. */
+    /** True for '1', true or 1, however the switch arrives from the server. */
     function on( v ) { return v === true || v === '1' || v === 1; }
 
     function missingItems( f ) {
         var m = f.meta, out = [];
-        if ( ! m.fc_rating )                         out.push( 'Rating — without it, nothing is added to the article' );
-        if ( ! String( m.fc_claim || '' ).trim() )   out.push( 'Claim' );
-        if ( ! String( m.fc_fact || '' ).trim() )    out.push( 'Fact' );
-        if ( ! f.hasImage )                          out.push( 'Featured image — the fact card shows no picture' );
-        if ( m.fc_card_mode === 'image' && ! m.fc_card_image ) out.push( 'Card picture — the site default card shows instead' );
+        if ( ! m.fc_rating )                       out.push( 'Rating — without it, nothing is added to the article' );
+        if ( ! String( m.fc_claim || '' ).trim() ) out.push( 'Claim' );
+        if ( ! String( m.fc_fact || '' ).trim() )  out.push( 'Fact' );
+        if ( ! f.hasImage )                        out.push( 'Featured image — the card has no photo' );
+        if ( m.fc_card_mode === 'image' && ! m.fc_card_image ) out.push( 'Your card picture — the built-in card shows instead' );
         return out;
+    }
+
+    /** What "Automatic" will do for this post's rating. */
+    function autoStamp( m ) {
+        if ( settings.olderPost )       return 'no stamp (older post)';
+        if ( ! m.fc_rating )            return 'pick a rating first';
+        if ( m.fc_rating === 'news' )    return 'no stamp';
+        if ( m.fc_rating === 'insight' ) return 'Insight badge';
+        return 'Fact checked stamp';
+    }
+
+    /** Short text under the claim and fact boxes: length, and a tip. */
+    function lengthHelp( text, tip ) {
+        var n = String( text || '' ).trim().length;
+        if ( ! n ) return tip;
+        return n + ' characters' + ( n > 140 ? ' — long; shorter reads better on the card.' : '.' ) + ' ' + tip;
     }
 
     /** Pick an image from the media library; keeps only its ID. */
@@ -77,9 +93,9 @@
                     value: props.id,
                     onSelect: function ( m ) { props.onChange( m.id ); },
                     render: function ( o ) {
-                        return el( 'div', null,
-                            src && el( 'img', { src: src, alt: '', style: { display: 'block', maxWidth: '100%', borderRadius: '4px', marginBottom: '8px' } } ),
-                            el( C.Button, { variant: 'secondary', onClick: o.open }, props.id ? 'Replace image' : 'Choose image' ),
+                        return el( 'div', { className: 'fc-pick' },
+                            src && el( 'img', { src: src, alt: '', style: { display: 'block', width: '100%', borderRadius: '4px', marginBottom: '8px' } } ),
+                            el( C.Button, { variant: 'secondary', onClick: o.open }, props.id ? 'Replace' : 'Choose image' ),
                             props.id ? el( C.Button, { variant: 'link', isDestructive: true, style: { marginLeft: '12px' }, onClick: function () { props.onChange( 0 ); } }, 'Remove' ) : null
                         );
                     }
@@ -88,12 +104,19 @@
         );
     }
 
+    /** A small labelled group inside the panel, with a line between groups. */
+    function Group( title, children ) {
+        return el( 'div', { className: 'fc-group', style: { borderTop: '1px solid #e0e0e0', paddingTop: '16px', marginTop: '4px' } },
+            el( 'h3', { style: { fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', margin: '0 0 12px', color: '#1e1e1e' } }, title ),
+            el( C.Flex, { direction: 'column', gap: 4 }, children )
+        );
+    }
+
     var PANEL = 'fc-fact-check/fc-fact-check';
 
     /**
-     * WordPress starts plugin panels closed and ignores initialOpen for them.
-     * Open this one each time the editor loads; it is the panel editors need
-     * on almost every post.
+     * WordPress starts plugin panels closed and ignores initialOpen for them,
+     * so open this one each time the editor loads.
      */
     function useOpenOnLoad() {
         var opened = useSelect( function ( select ) {
@@ -118,121 +141,127 @@
         var m       = f.meta;
         var active  = on( m.fc_is_fact_check );
         var missing = active ? missingItems( f ) : [];
-        var ratings = [ { label: 'Select a rating…', value: '' } ].concat( settings.ratings );
+        var mode    = m.fc_card_mode || '';
+        var shown   = mode || settings.siteCard; // what the card will actually be
+
+        var common = { __nextHasNoMarginBottom: true };
+        function select( props ) { return el( C.SelectControl, Object.assign( { __next40pxDefaultSize: true }, common, props ) ); }
 
         return el( SidePanel, { name: 'fc-fact-check', title: 'Fact Check', className: 'fc-fact-check-panel' },
+            el( C.Flex, { direction: 'column', gap: 4 },
 
-            el( C.ToggleControl, {
-                label: 'Mark as Fact Check',
-                help: 'Adds the fact card, author box, WhatsApp banner and Google fact-check data.',
-                checked: active,
-                onChange: function ( v ) { f.set( 'fc_is_fact_check', v ); },
-                __nextHasNoMarginBottom: true
-            } ),
+                el( C.ToggleControl, Object.assign( {
+                    label: 'This is a fact check',
+                    help: active ? null : 'Turn on to add the fact card, author box and WhatsApp banner.',
+                    checked: active,
+                    onChange: function ( v ) { f.set( 'fc_is_fact_check', v ); }
+                }, common ) ),
 
-            active && missing.length > 0 && el( C.Notice, { status: 'warning', isDismissible: false, className: 'fc-missing' },
-                'Still needed: ' + missing.map( function ( x ) { return x.split( ' —' )[ 0 ].toLowerCase(); } ).join( ', ' ) + '.'
-            ),
+                active && missing.length > 0 && el( C.Notice, { status: 'warning', isDismissible: false },
+                    'Still needed: ' + missing.map( function ( x ) { return x.split( ' —' )[ 0 ].toLowerCase(); } ).join( ', ' ) + '.'
+                ),
 
-            active && el( C.SelectControl, {
-                label: 'Rating',
-                value: m.fc_rating || '',
-                options: ratings,
-                onChange: function ( v ) { f.set( 'fc_rating', v ); },
-                __next40pxDefaultSize: true,
-                __nextHasNoMarginBottom: true
-            } ),
-
-            active && el( C.TextareaControl, {
-                label: 'Claim',
-                placeholder: 'What is the claim being fact-checked?',
-                value: m.fc_claim || '',
-                rows: 4,
-                onChange: function ( v ) { f.set( 'fc_claim', v ); },
-                __nextHasNoMarginBottom: true
-            } ),
-
-            active && el( C.TextareaControl, {
-                label: 'Fact',
-                placeholder: 'What is the verified fact / correction?',
-                value: m.fc_fact || '',
-                rows: 4,
-                onChange: function ( v ) { f.set( 'fc_fact', v ); },
-                __nextHasNoMarginBottom: true
-            } ),
-
-            active && el( C.PanelBody, {
-                    title: 'Fact card and featured image',
-                    initialOpen: !! ( m.fc_card_mode || m.fc_featured_badge || m.fc_card_photo ),
-                    className: 'fc-visuals'
-                },
-                el( C.SelectControl, {
-                    label: 'Fact card',
-                    value: m.fc_card_mode || '',
-                    options: settings.cardModes,
-                    onChange: function ( v ) { f.set( 'fc_card_mode', v ); },
-                    __next40pxDefaultSize: true,
-                    __nextHasNoMarginBottom: true
+                // ── The facts
+                active && select( {
+                    label: 'Rating',
+                    value: m.fc_rating || '',
+                    options: [ { label: 'Choose a rating…', value: '' } ].concat( ratings ),
+                    onChange: function ( v ) { f.set( 'fc_rating', v ); }
                 } ),
-                m.fc_card_mode === 'image' && el( ImagePicker, {
-                    name: 'fc-card-image',
-                    label: 'Card picture',
-                    help: 'Shown instead of the built-in card, exactly as you made it.',
-                    id: m.fc_card_image || 0,
-                    onChange: function ( id ) { f.set( 'fc_card_image', id ); }
-                } ),
-                el( ImagePicker, {
-                    name: 'fc-card-photo',
-                    label: 'Card photo (optional)',
-                    help: 'The photo inside the built-in card. Leave empty to use the plain featured image.',
-                    id: m.fc_card_photo || 0,
-                    onChange: function ( id ) { f.set( 'fc_card_photo', id ); }
-                } ),
-                el( C.SelectControl, {
-                    label: 'Featured image stamp',
-                    help: settings.featuredHelp,
-                    value: m.fc_featured_badge || '',
-                    options: settings.badges,
-                    onChange: function ( v ) { f.set( 'fc_featured_badge', v ); },
-                    __next40pxDefaultSize: true,
-                    __nextHasNoMarginBottom: true
-                } )
-            ),
 
-            active && el( C.PanelBody, {
-                    title: 'Where the claim came from',
-                    initialOpen: !! ( m.fc_claim_source_url || m.fc_claim_author ),
-                    className: 'fc-source'
-                },
-                el( 'p', { className: 'components-base-control__help' }, 'Optional. Sent to Google so the claim can be traced back.' ),
-                el( C.TextControl, {
-                    label: 'Link where it appeared',
-                    type: 'url',
-                    placeholder: 'https://...',
-                    value: m.fc_claim_source_url || '',
-                    onChange: function ( v ) { f.set( 'fc_claim_source_url', v ); },
-                    __next40pxDefaultSize: true,
-                    __nextHasNoMarginBottom: true
-                } ),
-                el( C.TextControl, {
-                    label: 'Who made the claim',
-                    placeholder: 'e.g. Viral WhatsApp forward, @username',
-                    value: m.fc_claim_author || '',
-                    onChange: function ( v ) { f.set( 'fc_claim_author', v ); },
-                    __next40pxDefaultSize: true,
-                    __nextHasNoMarginBottom: true
-                } ),
-                m.fc_claim_author && el( C.SelectControl, {
-                    label: 'That source is a',
-                    value: m.fc_claim_author_type === 'Organization' ? 'Organization' : 'Person',
-                    options: [
-                        { label: 'Person or social media account', value: 'Person' },
-                        { label: 'Organisation, channel or publication', value: 'Organization' }
-                    ],
-                    onChange: function ( v ) { f.set( 'fc_claim_author_type', v ); },
-                    __next40pxDefaultSize: true,
-                    __nextHasNoMarginBottom: true
-                } )
+                active && el( C.TextareaControl, Object.assign( {
+                    label: 'Claim',
+                    placeholder: 'What is being said',
+                    help: lengthHelp( m.fc_claim, '' ),
+                    value: m.fc_claim || '',
+                    rows: 3,
+                    onChange: function ( v ) { f.set( 'fc_claim', v ); }
+                }, common ) ),
+
+                active && el( C.TextareaControl, Object.assign( {
+                    label: 'Fact',
+                    placeholder: 'What is actually true',
+                    help: lengthHelp( m.fc_fact, 'Put **two stars** around words to highlight them.' ),
+                    value: m.fc_fact || '',
+                    rows: 4,
+                    onChange: function ( v ) { f.set( 'fc_fact', v ); }
+                }, common ) ),
+
+                // ── Pictures
+                active && Group( 'Fact card', [
+                    select( {
+                        key: 'mode',
+                        label: 'Show',
+                        hideLabelFromVision: true,
+                        value: mode,
+                        options: settings.cardModes,
+                        onChange: function ( v ) { f.set( 'fc_card_mode', v ); }
+                    } ),
+                    shown === 'image' && el( ImagePicker, {
+                        key: 'image',
+                        name: 'fc-card-image',
+                        label: 'Your card picture',
+                        help: 'Shown as it is, in place of the built-in card.',
+                        id: m.fc_card_image || 0,
+                        onChange: function ( id ) { f.set( 'fc_card_image', id ); }
+                    } ),
+                    ( shown === 'card' || shown === 'simple' ) && el( ImagePicker, {
+                        key: 'photo',
+                        name: 'fc-card-photo',
+                        label: 'Card photo (optional)',
+                        help: 'Leave empty to use the featured image without its stamp.',
+                        id: m.fc_card_photo || 0,
+                        onChange: function ( id ) { f.set( 'fc_card_photo', id ); }
+                    } )
+                ] ),
+
+                active && Group( 'Featured image stamp', [
+                    select( {
+                        key: 'badge',
+                        label: 'Stamp',
+                        hideLabelFromVision: true,
+                        value: m.fc_featured_badge || '',
+                        options: ( settings.badges || [] ).map( function ( o ) {
+                            return o.value === '' ? { value: '', label: 'Automatic: ' + autoStamp( m ) } : o;
+                        } ),
+                        help: settings.featuredHelp,
+                        onChange: function ( v ) { f.set( 'fc_featured_badge', v ); }
+                    } )
+                ] ),
+
+                // ── For Google
+                active && el( C.PanelBody, {
+                        title: 'Claim source (for Google)',
+                        initialOpen: !! ( m.fc_claim_source_url || m.fc_claim_author ),
+                        className: 'fc-source'
+                    },
+                    el( C.Flex, { direction: 'column', gap: 4 },
+                        el( C.TextControl, Object.assign( {
+                            label: 'Link where it appeared',
+                            type: 'url',
+                            placeholder: 'https://',
+                            value: m.fc_claim_source_url || '',
+                            onChange: function ( v ) { f.set( 'fc_claim_source_url', v ); },
+                            __next40pxDefaultSize: true
+                        }, common ) ),
+                        el( C.TextControl, Object.assign( {
+                            label: 'Who said it',
+                            placeholder: 'e.g. viral WhatsApp forward, @username',
+                            value: m.fc_claim_author || '',
+                            onChange: function ( v ) { f.set( 'fc_claim_author', v ); },
+                            __next40pxDefaultSize: true
+                        }, common ) ),
+                        m.fc_claim_author && select( {
+                            label: 'That is a',
+                            value: m.fc_claim_author_type === 'Organization' ? 'Organization' : 'Person',
+                            options: [
+                                { label: 'Person or social media account', value: 'Person' },
+                                { label: 'Organisation, channel or publication', value: 'Organization' }
+                            ],
+                            onChange: function ( v ) { f.set( 'fc_claim_author_type', v ); }
+                        } )
+                    )
+                )
             )
         );
     }

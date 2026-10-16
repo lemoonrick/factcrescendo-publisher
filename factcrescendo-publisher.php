@@ -46,6 +46,7 @@ function fc_publisher_uninstall() {
     delete_option( 'fc_site_key' );
     delete_option( 'fc_card_design' );
     delete_option( 'fc_show_whatsapp_banner' );
+    delete_option( 'fc_whatsapp_banner_style' );
     delete_option( 'fc_featured_stamps' );
     delete_option( 'fc_featured_corner' );
     delete_option( 'fc_featured_since' );

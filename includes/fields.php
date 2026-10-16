@@ -55,7 +55,7 @@ function fc_card_mode_choices() {
     return [
         ''      => 'Site default',
         'card'  => 'Built-in card',
-        'image' => 'My own picture (e.g. Canva)',
+        'image' => 'My own picture (e.g. from Canva)',
         'off'   => 'No card',
     ];
 }
@@ -66,7 +66,7 @@ function fc_featured_badge_choices() {
         ''             => 'Automatic (from the rating)',
         'fact-checked' => 'Fact checked stamp',
         'insight'      => 'Insight badge',
-        'none'         => 'No stamp (plain, or my own design)',
+        'none'         => 'No stamp (plain, or my own Canva image)',
     ];
 }
 
@@ -197,9 +197,9 @@ function fc_render_fields_box( $post ) {
     <div class="fc-f">
         <label class="fc-switch">
             <input type="checkbox" id="fc_is_fact_check" name="fc_is_fact_check" value="1" <?php checked( $is_fc ); ?>>
-            Mark as Fact Check
+            This is a fact check
         </label>
-        <p class="fc-h">Adds the fact card, author box, WhatsApp banner and Google fact-check data to this article.</p>
+        <p class="fc-h">Adds the fact card, author box and WhatsApp banner, and tells Google this is a fact check.</p>
     </div>
 
     <div id="fc-fields" <?php echo $is_fc ? '' : 'hidden'; ?>>
@@ -209,7 +209,7 @@ function fc_render_fields_box( $post ) {
         <div class="fc-f">
             <label class="fc-l" for="fc_rating">Rating</label>
             <select id="fc_rating" name="fc_rating">
-                <option value="">Select a rating…</option>
+                <option value="">Choose a rating…</option>
                 <?php foreach ( fc_rating_choices() as $value => $label ) : ?>
                 <option value="<?php echo esc_attr( $value ); ?>" <?php selected( $rating, $value ); ?>><?php echo esc_html( $label ); ?></option>
                 <?php endforeach; ?>
@@ -218,12 +218,13 @@ function fc_render_fields_box( $post ) {
 
         <div class="fc-f">
             <label class="fc-l" for="fc_claim">Claim</label>
-            <textarea id="fc_claim" name="fc_claim" rows="3" placeholder="What is the claim being fact-checked?"><?php echo esc_textarea( $claim ); ?></textarea>
+            <textarea id="fc_claim" name="fc_claim" rows="3" placeholder="What is being said"><?php echo esc_textarea( $claim ); ?></textarea>
         </div>
 
         <div class="fc-f">
             <label class="fc-l" for="fc_fact">Fact</label>
-            <textarea id="fc_fact" name="fc_fact" rows="3" placeholder="What is the verified fact / correction?"><?php echo esc_textarea( $fact ); ?></textarea>
+            <textarea id="fc_fact" name="fc_fact" rows="3" placeholder="What is actually true"><?php echo esc_textarea( $fact ); ?></textarea>
+            <p class="fc-h">Put **two stars** around words to highlight them on the card.</p>
         </div>
 
         <details <?php echo ( $card_mode !== '' || $badge !== '' || fc_meta( 'fc_card_photo', $post->ID ) ) ? 'open' : ''; ?>>
@@ -262,7 +263,7 @@ function fc_render_fields_box( $post ) {
         </details>
 
         <details <?php echo ( $source_url !== '' || $author !== '' ) ? 'open' : ''; ?>>
-            <summary>Where the claim came from (optional, for Google)</summary>
+            <summary>Claim source (for Google)</summary>
 
             <div class="fc-f">
                 <label class="fc-l" for="fc_claim_source_url">Where the claim appeared (link)</label>
@@ -271,7 +272,7 @@ function fc_render_fields_box( $post ) {
             </div>
 
             <div class="fc-f">
-                <label class="fc-l" for="fc_claim_author">Who made the claim</label>
+                <label class="fc-l" for="fc_claim_author">Who said it</label>
                 <input type="text" id="fc_claim_author" name="fc_claim_author" value="<?php echo esc_attr( $author ); ?>" placeholder="e.g. Viral WhatsApp forward, @username, a news channel">
             </div>
 
@@ -359,7 +360,7 @@ function fc_render_image_picker( $name, $id ) {
 function fc_featured_help_text() {
     if ( ! fc_featured_enabled() ) return 'Stamping is switched off for this site (Settings → FactCrescendo).';
     if ( ! fc_featured_can_draw() ) return 'This server cannot draw images (PHP GD is missing), so no stamp is added.';
-    return 'Set a plain photo as the featured image; the stamp is added when you save. Pick "No stamp" for a Canva design.';
+    return 'Set a plain photo as the featured image. The stamp is added when you save.';
 }
 
 
@@ -422,10 +423,19 @@ function fc_enqueue_editor_panel() {
         return $out;
     };
 
+    // "Site default" says what the default is, so nobody has to look it up.
+    $modes     = fc_card_mode_choices();
+    $site_card = fc_card_design();
+    $modes['']  = 'Site default (' . ( $site_card === 'off' ? 'no card' : ( $site_card === 'simple' ? 'simple card' : 'built-in card' ) ) . ')';
+
+    $post = get_post();
+
     wp_add_inline_script( 'fc-editor-panel', 'window.fcEditor = ' . wp_json_encode( [
         'ratings'      => $ratings,
-        'cardModes'    => $options( fc_card_mode_choices() ),
+        'cardModes'    => $options( $modes ),
+        'siteCard'     => $site_card,
         'badges'       => $options( fc_featured_badge_choices() ),
         'featuredHelp' => fc_featured_help_text(),
+        'olderPost'    => $post ? fc_featured_is_older_post( $post ) : false,
     ] ) . ';', 'before' );
 }
