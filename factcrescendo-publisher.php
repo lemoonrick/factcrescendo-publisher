@@ -21,6 +21,7 @@ require_once FC_PUBLISHER_DIR . 'includes/fields.php';
 require_once FC_PUBLISHER_DIR . 'includes/sites.php';
 require_once FC_PUBLISHER_DIR . 'includes/rest-api.php';
 require_once FC_PUBLISHER_DIR . 'includes/content-injection.php';
+require_once FC_PUBLISHER_DIR . 'includes/fact-card.php';
 require_once FC_PUBLISHER_DIR . 'includes/settings-page.php';
 require_once FC_PUBLISHER_DIR . 'includes/seo-schema.php';
 require_once FC_PUBLISHER_DIR . 'includes/updater.php';
@@ -42,6 +43,7 @@ function fc_publisher_uninstall() {
     delete_option( 'fc_elevenlabs_api_key' );
     delete_option( 'fc_elevenlabs_voice_id' );
     delete_option( 'fc_site_key' );
+    delete_option( 'fc_card_design' );
     delete_option( 'fc_show_whatsapp_banner' );
     delete_transient( 'fc_latest_release' );
 }

@@ -162,7 +162,7 @@ $pid = make_post( [
     'fc_fact'          => 'Old ACF fact',
 ] );
 $html = render( $pid );
-check( 'still get their fact card', strpos( $html, 'Old ACF claim' ) !== false && strpos( $html, 'fc-hero' ) !== false );
+check( 'still get their fact card', strpos( $html, 'Old ACF claim' ) !== false && strpos( $html, 'fc-cc' ) !== false );
 check( 'still get their author box', strpos( $html, 'fc-article-card' ) !== false );
 
 
@@ -173,11 +173,52 @@ $plain = make_post( [], '<p>Ordinary news.</p>' );
 check( 'normal post is left untouched', trim( render( $plain ) ) === '<p>Ordinary news.</p>' );
 
 $no_rating = make_post( [ 'fc_is_fact_check' => '1', 'fc_claim' => 'x' ] );
-check( 'fact check without a rating adds nothing', strpos( render( $no_rating ), 'fc-hero' ) === false );
+check( 'fact check without a rating adds nothing', strpos( render( $no_rating ), 'fc-cc' ) === false );
 
 $pid   = make_post( array_merge( $base, [ 'fc_claim' => '<script>alert("x")</script> claim' ] ) );
 $html = render( $pid );
 check( 'claim text cannot inject a script', strpos( $html, '<script>alert' ) === false );
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+section( 'Fact card' );
+
+reset_options();
+$pid  = make_post( array_merge( $base, [ 'fc_fact' => "Fact line one\nFact & line two" ] ) );
+$html = render( $pid );
+check( 'thumbnail design is the default', strpos( $html, 'class="fc-cc"' ) !== false );
+check( 'card shows the claim', strpos( $html, esc_html( $base['fc_claim'] ) ) !== false );
+check( 'card shows the fact, safely escaped', strpos( $html, 'Fact &amp; line two' ) !== false );
+check( 'card shows the result', strpos( $html, 'fc-cc-result-text">Misleading<' ) !== false );
+check( 'no photo set: no empty photo frame', strpos( $html, '<figure class="fc-cc-photo"' ) === false );
+check( 'site not in the list: no WhatsApp line on the card', strpos( $html, 'class="fc-cc-wa"' ) === false );
+check( 'no logo anywhere: site name shown instead', strpos( $html, 'fc-cc-sitename' ) !== false );
+check( 'card sits before the article text', strpos( $html, 'fc-cc' ) < strpos( $html, 'First paragraph' ) );
+
+update_option( 'fc_site_key', 'factcrescendo.com' );
+$html = render( $pid );
+check( 'listed site: WhatsApp number on the card', strpos( $html, '9049053770' ) !== false && strpos( $html, 'class="fc-cc-wa"' ) !== false );
+update_option( 'fc_site_key', 'srilanka.factcrescendo.com' );
+check( 'Sri Lanka: Sri Lanka number on the card', strpos( render( $pid ), '+94 77 151 4696' ) !== false );
+
+update_option( 'fc_card_design', 'simple' );
+$html = render( $pid );
+check( 'simple design can be chosen instead', strpos( $html, 'fc-hero' ) !== false && strpos( $html, 'class="fc-cc"' ) === false );
+update_option( 'fc_card_design', 'off' );
+$html = render( $pid );
+check( 'card can be switched off; author box stays', strpos( $html, 'fc-hero' ) === false && strpos( $html, 'fc-cc' ) === false && strpos( $html, 'fc-article-card' ) !== false );
+update_option( 'fc_card_design', 'nonsense' );
+check( 'unknown design falls back to the default', fc_card_design() === 'canva' );
+delete_option( 'fc_card_design' );
+
+update_option( 'fc_logo_url', 'https://example.com/logo.png' );
+check( 'logo from settings is used', strpos( render( $pid ), 'https://example.com/logo.png' ) !== false );
+delete_option( 'fc_logo_url' );
+
+add_filter( 'fc_card_labels', $hi = function( $w ) { $w['claim'] = 'दावा'; return $w; } );
+check( 'card words can be translated', strpos( render( $pid ), 'दावा' ) !== false );
+remove_filter( 'fc_card_labels', $hi );
+reset_options();
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,7 +275,9 @@ section( 'Audio player' );
 
 reset_options();
 update_option( 'fc_site_key', 'english.factcrescendo.com' );
-check( 'English site: player shown', strpos( render( $pid ), 'fc-a-wrap' ) !== false );
+$html = render( $pid );
+check( 'English site: player shown', strpos( $html, 'fc-a-wrap' ) !== false );
+check( 'player code is a separate file, not inside the article', strpos( $html, 'ICON_PLAY' ) === false && wp_script_is( 'fc-audio-player', 'enqueued' ) );
 
 update_option( 'fc_site_key', 'factcrescendo.com' );
 check( 'Hindi site: no player', strpos( render( $pid ), 'fc-a-wrap' ) === false );

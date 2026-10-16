@@ -38,6 +38,14 @@ function fc_register_settings() {
         'default'           => '',
     ] );
 
+    register_setting( 'fc_publisher_settings_group', 'fc_card_design', [
+        'type'              => 'string',
+        'sanitize_callback' => function( $v ) {
+            return in_array( $v, [ 'canva', 'simple', 'off' ], true ) ? $v : 'canva';
+        },
+        'default'           => 'canva',
+    ] );
+
     register_setting( 'fc_publisher_settings_group', 'fc_show_whatsapp_banner', [
         'type'              => 'string',
         'sanitize_callback' => function( $v ) { return $v === '1' ? '1' : '0'; },
@@ -176,13 +184,29 @@ function fc_render_settings_page() {
             </div>
 
             <div class="fc-settings-section">
-                <h2>Branding</h2>
-                <p class="fc-section-desc">Used in the Fact Card shown at the top of every fact-check article.</p>
+                <h2>Fact Card</h2>
+                <p class="fc-section-desc">Shown at the top of every fact-check article.</p>
                 <div class="fc-field">
-                    <label for="fc_logo_url">Site Logo URL</label>
+                    <label for="fc_card_design">Card design</label>
+                    <select id="fc_card_design" name="fc_card_design">
+                        <?php
+                        $fc_design = fc_card_design();
+                        foreach ( [
+                            'canva'  => 'FactCrescendo thumbnail (recommended)',
+                            'simple' => 'Simple — photo with claim and fact bar underneath',
+                            'off'    => 'No card',
+                        ] as $value => $label ) :
+                        ?>
+                        <option value="<?php echo esc_attr( $value ); ?>" <?php selected( $fc_design, $value ); ?>><?php echo esc_html( $label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="fc-field">
+                    <label for="fc_logo_url">Logo on the card</label>
                     <input type="url" id="fc_logo_url" name="fc_logo_url"
                         value="<?php echo esc_attr( get_option( 'fc_logo_url', '' ) ); ?>"
-                        placeholder="https://yoursite.com/logo.png">
+                        placeholder="Leave empty to use the theme's logo">
+                    <p class="fc-field-hint"><?php echo fc_card_logo_url() !== '' ? 'Currently using: ' . esc_html( fc_card_logo_url() ) : 'No logo found — the card shows the site name instead.'; ?></p>
                 </div>
             </div>
 
