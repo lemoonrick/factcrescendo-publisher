@@ -43,6 +43,30 @@ function fc_field_definitions() {
         'fc_claim_source_url'  => [ 'type' => 'string',  'sanitize' => 'fc_sanitize_url' ],
         'fc_claim_author'      => [ 'type' => 'string',  'sanitize' => 'sanitize_text_field' ],
         'fc_claim_author_type' => [ 'type' => 'string',  'sanitize' => 'fc_sanitize_author_type' ],
+        'fc_card_mode'         => [ 'type' => 'string',  'sanitize' => 'fc_sanitize_card_mode' ],
+        'fc_card_image'        => [ 'type' => 'integer', 'sanitize' => 'fc_sanitize_image_id' ],
+        'fc_card_photo'        => [ 'type' => 'integer', 'sanitize' => 'fc_sanitize_image_id' ],
+        'fc_featured_badge'    => [ 'type' => 'string',  'sanitize' => 'fc_sanitize_featured_badge' ],
+    ];
+}
+
+/** Fact card choices. Empty means "use the site setting". */
+function fc_card_mode_choices() {
+    return [
+        ''      => 'Site default',
+        'card'  => 'Built-in card',
+        'image' => 'My own picture (e.g. Canva)',
+        'off'   => 'No card',
+    ];
+}
+
+/** Featured image stamp choices. Empty means "decide from the rating". */
+function fc_featured_badge_choices() {
+    return [
+        ''             => 'Automatic (from the rating)',
+        'fact-checked' => 'Fact checked stamp',
+        'insight'      => 'Insight badge',
+        'none'         => 'No stamp (plain, or my own design)',
     ];
 }
 
@@ -63,6 +87,20 @@ function fc_sanitize_rating( $value ) {
 
 function fc_sanitize_author_type( $value ) {
     return $value === 'Organization' ? 'Organization' : 'Person';
+}
+
+function fc_sanitize_card_mode( $value ) {
+    return array_key_exists( (string) $value, fc_card_mode_choices() ) ? (string) $value : '';
+}
+
+function fc_sanitize_featured_badge( $value ) {
+    return array_key_exists( (string) $value, fc_featured_badge_choices() ) ? (string) $value : '';
+}
+
+/** An image from the media library, or 0. */
+function fc_sanitize_image_id( $value ) {
+    $id = absint( $value );
+    return ( $id && wp_attachment_is_image( $id ) ) ? $id : 0;
 }
 
 /**
@@ -135,7 +173,10 @@ function fc_render_fields_box( $post ) {
     $source_url  = (string) fc_meta( 'fc_claim_source_url', $post->ID );
     $author      = (string) fc_meta( 'fc_claim_author', $post->ID );
     $author_type = (string) fc_meta( 'fc_claim_author_type', $post->ID );
+    $card_mode   = (string) fc_meta( 'fc_card_mode', $post->ID );
+    $badge       = (string) fc_meta( 'fc_featured_badge', $post->ID );
 
+    wp_enqueue_media();
     wp_nonce_field( 'fc_save_fields', 'fc_fields_nonce' );
     ?>
     <style>
@@ -149,6 +190,8 @@ function fc_render_fields_box( $post ) {
     #fc-fact-check details { border-top: 1px solid #dcdcde; padding-top: 12px; }
     #fc-fact-check summary { cursor: pointer; font-weight: 600; margin-bottom: 12px; }
     #fc-fact-check [hidden] { display: none !important; }
+    #fc-fact-check .fc-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    #fc-fact-check .fc-pick img { max-width: 120px; max-height: 80px; border-radius: 4px; display: block; }
     </style>
 
     <div class="fc-f">
@@ -182,6 +225,41 @@ function fc_render_fields_box( $post ) {
             <label class="fc-l" for="fc_fact">Fact</label>
             <textarea id="fc_fact" name="fc_fact" rows="3" placeholder="What is the verified fact / correction?"><?php echo esc_textarea( $fact ); ?></textarea>
         </div>
+
+        <details <?php echo ( $card_mode !== '' || $badge !== '' || fc_meta( 'fc_card_photo', $post->ID ) ) ? 'open' : ''; ?>>
+            <summary>Fact card and featured image</summary>
+
+            <div class="fc-f">
+                <label class="fc-l" for="fc_card_mode">Fact card</label>
+                <select id="fc_card_mode" name="fc_card_mode">
+                    <?php foreach ( fc_card_mode_choices() as $value => $label ) : ?>
+                    <option value="<?php echo esc_attr( $value ); ?>" <?php selected( $card_mode, $value ); ?>><?php echo esc_html( $label ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="fc-f" id="fc-card-image-row" <?php echo $card_mode === 'image' ? '' : 'hidden'; ?>>
+                <label class="fc-l">Card picture</label>
+                <?php fc_render_image_picker( 'fc_card_image', (int) fc_meta( 'fc_card_image', $post->ID ) ); ?>
+                <p class="fc-h">Shown instead of the built-in card, exactly as you made it.</p>
+            </div>
+
+            <div class="fc-f">
+                <label class="fc-l">Card photo (optional)</label>
+                <?php fc_render_image_picker( 'fc_card_photo', (int) fc_meta( 'fc_card_photo', $post->ID ) ); ?>
+                <p class="fc-h">The photo inside the built-in card. Leave empty to use the plain featured image.</p>
+            </div>
+
+            <div class="fc-f">
+                <label class="fc-l" for="fc_featured_badge">Featured image stamp</label>
+                <select id="fc_featured_badge" name="fc_featured_badge">
+                    <?php foreach ( fc_featured_badge_choices() as $value => $label ) : ?>
+                    <option value="<?php echo esc_attr( $value ); ?>" <?php selected( $badge, $value ); ?>><?php echo esc_html( $label ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="fc-h"><?php echo esc_html( fc_featured_help_text() ); ?></p>
+            </div>
+        </details>
 
         <details <?php echo ( $source_url !== '' || $author !== '' ) ? 'open' : ''; ?>>
             <summary>Where the claim came from (optional, for Google)</summary>
@@ -228,9 +306,60 @@ function fc_render_fields_box( $post ) {
         fields.addEventListener('input', check);
         fields.addEventListener('change', check);
         check();
+
+        // The card picture is only asked for when "My own picture" is chosen.
+        var mode = document.getElementById('fc_card_mode');
+        mode.addEventListener('change', function () {
+            document.getElementById('fc-card-image-row').hidden = mode.value !== 'image';
+        });
+
+        // Image pickers: open the media library, keep the chosen image's ID.
+        fields.querySelectorAll('.fc-pick').forEach(function (box) {
+            var input = box.querySelector('input');
+            var img   = box.querySelector('img');
+            var clear = box.querySelector('.fc-pick-clear');
+            var frame;
+
+            box.querySelector('.fc-pick-choose').addEventListener('click', function () {
+                if (!window.wp || !wp.media) return;
+                frame = frame || wp.media({ title: 'Choose an image', library: { type: 'image' }, multiple: false });
+                frame.off('select').on('select', function () {
+                    var a = frame.state().get('selection').first().toJSON();
+                    input.value = a.id;
+                    img.src = (a.sizes && a.sizes.thumbnail ? a.sizes.thumbnail : a).url;
+                    img.hidden = clear.hidden = false;
+                });
+                frame.open();
+            });
+            clear.addEventListener('click', function () {
+                input.value = '';
+                img.hidden = clear.hidden = true;
+            });
+        });
     })();
     </script>
     <?php
+}
+
+
+/** A "Choose image" button that stores the image's ID in a hidden field. */
+function fc_render_image_picker( $name, $id ) {
+    $src = $id ? wp_get_attachment_image_url( $id, 'thumbnail' ) : '';
+    ?>
+    <div class="fc-pick">
+        <input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="<?php echo $src ? (int) $id : ''; ?>">
+        <img src="<?php echo esc_url( (string) $src ); ?>" alt="" <?php echo $src ? '' : 'hidden'; ?>>
+        <button type="button" class="button fc-pick-choose">Choose image</button>
+        <button type="button" class="button-link fc-pick-clear" <?php echo $src ? '' : 'hidden'; ?>>Remove</button>
+    </div>
+    <?php
+}
+
+/** One line telling the editor what the stamp setting will do on this site. */
+function fc_featured_help_text() {
+    if ( ! fc_featured_enabled() ) return 'Stamping is switched off for this site (Settings → FactCrescendo).';
+    if ( ! fc_featured_can_draw() ) return 'This server cannot draw images (PHP GD is missing), so no stamp is added.';
+    return 'Set a plain photo as the featured image; the stamp is added when you save. Pick "No stamp" for a Canva design.';
 }
 
 
@@ -256,7 +385,7 @@ function fc_save_fields( $post_id, $post ) {
 
         $value = call_user_func( $def['sanitize'], $raw );
 
-        if ( $value === '' ) {
+        if ( $value === '' || $value === 0 ) {
             delete_post_meta( $post_id, $key );
         } else {
             // update_post_meta() strips one level of slashes, so add one back
@@ -278,7 +407,7 @@ function fc_enqueue_editor_panel() {
     wp_enqueue_script(
         'fc-editor-panel',
         FC_PUBLISHER_URL . 'assets/editor-panel.js',
-        [ 'wp-plugins', 'wp-element', 'wp-data', 'wp-components', 'wp-editor' ],
+        [ 'wp-plugins', 'wp-element', 'wp-data', 'wp-components', 'wp-editor', 'wp-block-editor', 'wp-core-data' ],
         FC_PUBLISHER_VERSION,
         true
     );
@@ -287,5 +416,16 @@ function fc_enqueue_editor_panel() {
     foreach ( fc_rating_choices() as $value => $label ) {
         $ratings[] = [ 'value' => $value, 'label' => $label ];
     }
-    wp_add_inline_script( 'fc-editor-panel', 'window.fcEditor = ' . wp_json_encode( [ 'ratings' => $ratings ] ) . ';', 'before' );
+    $options = function ( $choices ) {
+        $out = [];
+        foreach ( $choices as $value => $label ) $out[] = [ 'value' => (string) $value, 'label' => $label ];
+        return $out;
+    };
+
+    wp_add_inline_script( 'fc-editor-panel', 'window.fcEditor = ' . wp_json_encode( [
+        'ratings'      => $ratings,
+        'cardModes'    => $options( fc_card_mode_choices() ),
+        'badges'       => $options( fc_featured_badge_choices() ),
+        'featuredHelp' => fc_featured_help_text(),
+    ] ) . ';', 'before' );
 }

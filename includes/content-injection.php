@@ -43,13 +43,8 @@ function fc_inject_blocks( $content ) {
     $rating_label = fc_get_rating_label( $rating );
     $claim        = fc_meta( 'fc_claim', $post_id );
     $fact         = fc_meta( 'fc_fact', $post_id );
-    $logo_url     = get_option( 'fc_logo_url', '' );
 
-    switch ( fc_card_design() ) {
-        case 'off':    $fact_card = ''; break;
-        case 'simple': $fact_card = fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $logo_url ); break;
-        default:       $fact_card = fc_build_canva_card( $post_id, $rating, $rating_label, $claim, $fact );
-    }
+    $fact_card    = fc_render_fact_card( $post_id, $rating, $rating_label, $claim, $fact );
     $author_box   = fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_label );
     $wa_banner    = fc_get_whatsapp_banner( $content );
 
@@ -65,7 +60,7 @@ function fc_inject_blocks( $content ) {
         && ( fc_site_lang() === 'en' || get_post_meta( $post_id, 'fc_audio_url', true ) );
 
     if ( $audio_enabled ) {
-        $audio_player    = fc_build_audio_player( $post_id, $title, $claim, $fact );
+        $audio_player    = fc_build_audio_player( $post_id, $title, $claim, fc_plain_fact( $fact ) );
         $wrapped_content = '<div id="fc-article-body-' . esc_attr( $post_id ) . '" class="fc-article-body">' . $after . '</div>';
 
         // Anything above the marker — a byline line, typically — stays outside
@@ -152,7 +147,9 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
     // wp_get_attachment_image() is the inner call that builds the same tag,
     // srcset included, without passing through that filter — so the theme's
     // copy can be hidden while the card keeps its picture.
-    $thumb_id = get_post_thumbnail_id( $post_id );
+    //
+    // fc_card_photo_id() gives the plain photo, never a stamped featured image.
+    $thumb_id = fc_card_photo_id( $post_id );
     $img_html = $thumb_id ? wp_get_attachment_image( $thumb_id, 'full', false, [
         'class'         => 'fc-hero-img',
         'loading'       => 'eager',        // it is the top of the article
@@ -560,16 +557,15 @@ function fc_global_content_spacing() {
     ?>
     <style>
         /* Spacing below images, figures and embeds written by the editor.
-           The fact card is excluded by name: its own picture is inside a
-           clipped, rounded container, so a bottom margin there showed up as
-           a pale band under the photo with nothing behind it. */
-        .entry-content figure:not(.fc-hero-media),
+           The fact cards are left out: a margin inside their rounded photo
+           frame shows as a pale band under the picture. */
+        .entry-content figure:not(.fc-hero-media):not(.fc-fc-photo):not(.fc-own-card),
         .entry-content iframe,
-        .entry-content img:not(.fc-hero-img):not(.fc-hero-logo),
+        .entry-content img:not(.fc-hero-img):not(.fc-hero-logo):not(.fc-fc-img):not(.fc-fc-logo):not(.fc-own-card-img),
         .entry-content .wp-block-embed,
-        .post-content figure:not(.fc-hero-media),
+        .post-content figure:not(.fc-hero-media):not(.fc-fc-photo):not(.fc-own-card),
         .post-content iframe,
-        .post-content img:not(.fc-hero-img):not(.fc-hero-logo),
+        .post-content img:not(.fc-hero-img):not(.fc-hero-logo):not(.fc-fc-img):not(.fc-fc-logo):not(.fc-own-card-img),
         .post-content .wp-block-embed {
             margin-bottom: 16px !important;
         }

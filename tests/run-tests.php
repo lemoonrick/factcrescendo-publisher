@@ -77,6 +77,20 @@ function save_from_box( $post_id, $fields ) {
     $_POST = [];
 }
 
+/** A real photo in the media library, w × h pixels. */
+function make_image( $w = 1600, $h = 1000, $name = 'photo' ) {
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    $uploads = wp_upload_dir();
+    $path    = trailingslashit( $uploads['path'] ) . wp_unique_filename( $uploads['path'], $name . '.jpg' );
+    $im      = imagecreatetruecolor( $w, $h );
+    imagefill( $im, 0, 0, imagecolorallocate( $im, 40, 120, 200 ) );
+    imagejpeg( $im, $path, 90 );
+    $id = wp_insert_attachment( [ 'post_mime_type' => 'image/jpeg', 'post_title' => $name, 'post_status' => 'inherit' ], $path );
+    wp_update_attachment_metadata( $id, wp_generate_attachment_metadata( $id, $path ) );
+    return $id;
+}
+
 function reset_options() {
     delete_option( 'fc_site_key' );
     delete_option( 'fc_show_whatsapp_banner' );
@@ -162,7 +176,7 @@ $pid = make_post( [
     'fc_fact'          => 'Old ACF fact',
 ] );
 $html = render( $pid );
-check( 'still get their fact card', strpos( $html, 'Old ACF claim' ) !== false && strpos( $html, 'fc-cc' ) !== false );
+check( 'still get their fact card', strpos( $html, 'Old ACF claim' ) !== false && strpos( $html, 'fc-fc-wrap' ) !== false );
 check( 'still get their author box', strpos( $html, 'fc-article-card' ) !== false );
 
 
@@ -173,7 +187,7 @@ $plain = make_post( [], '<p>Ordinary news.</p>' );
 check( 'normal post is left untouched', trim( render( $plain ) ) === '<p>Ordinary news.</p>' );
 
 $no_rating = make_post( [ 'fc_is_fact_check' => '1', 'fc_claim' => 'x' ] );
-check( 'fact check without a rating adds nothing', strpos( render( $no_rating ), 'fc-cc' ) === false );
+check( 'fact check without a rating adds nothing', strpos( render( $no_rating ), 'fc-fc' ) === false );
 
 $pid   = make_post( array_merge( $base, [ 'fc_claim' => '<script>alert("x")</script> claim' ] ) );
 $html = render( $pid );
@@ -184,31 +198,65 @@ check( 'claim text cannot inject a script', strpos( $html, '<script>alert' ) ===
 section( 'Fact card' );
 
 reset_options();
-$pid  = make_post( array_merge( $base, [ 'fc_fact' => "Fact line one\nFact & line two" ] ) );
+$pid  = make_post( array_merge( $base, [ 'fc_fact' => "Fact line one\nFact & **line two** <b>x</b>" ] ) );
 $html = render( $pid );
-check( 'thumbnail design is the default', strpos( $html, 'class="fc-cc"' ) !== false );
+check( 'new card is the default', strpos( $html, 'class="fc-fc fc-fc--orange' ) !== false );
 check( 'card shows the claim', strpos( $html, esc_html( $base['fc_claim'] ) ) !== false );
-check( 'card shows the fact, safely escaped', strpos( $html, 'Fact &amp; line two' ) !== false );
-check( 'card shows the result', strpos( $html, 'fc-cc-result-text">Misleading<' ) !== false );
-check( 'no photo set: no empty photo frame', strpos( $html, '<figure class="fc-cc-photo"' ) === false );
-check( 'site not in the list: no WhatsApp line on the card', strpos( $html, 'class="fc-cc-wa"' ) === false );
-check( 'no logo anywhere: site name shown instead', strpos( $html, 'fc-cc-sitename' ) !== false );
-check( 'card sits before the article text', strpos( $html, 'fc-cc' ) < strpos( $html, 'First paragraph' ) );
+check( 'card shows the fact, with its highlight', strpos( $html, 'Fact &amp; <mark>line two</mark>' ) !== false );
+$card = fc_build_card( $pid, 'misleading', 'Misleading', '<img src=x onerror=alert(1)>', '**<script>x</script>**' );
+check( 'card escapes claim and fact, even inside a highlight', strpos( $card, '<img src=x' ) === false && strpos( $card, '<mark>&lt;script&gt;x&lt;/script&gt;</mark>' ) !== false );
+check( 'card shows the rating', strpos( $html, '<span>Misleading</span>' ) !== false );
+update_option( 'fc_site_key', 'factcrescendo.com' );
+$card = fc_build_card( $pid, 'misleading', 'Misleading', $base['fc_claim'], $base['fc_fact'] );
+check( 'no stamp, phone number or socials on the card', stripos( $card, 'stamp' ) === false && stripos( $card, 'whatsapp' ) === false && strpos( $card, '9049053770' ) === false );
+reset_options();
+check( 'no photo set: no empty photo frame', strpos( $html, '<figure class="fc-fc-photo"' ) === false );
+check( 'no logo anywhere: site name shown instead', strpos( $html, 'class="fc-fc-site"' ) !== false );
+check( 'card sits before the article text', strpos( $html, 'fc-fc-wrap' ) < strpos( $html, 'First paragraph' ) );
+check( 'false rating is red with an X', strpos( render( make_post( array_merge( $base, [ 'fc_rating' => 'false' ] ) ) ), 'fc-fc--red' ) !== false );
+
+$photo = make_image();
+set_post_thumbnail( $pid, $photo );
+$html = render( $pid );
+check( 'featured image shown in the card', strpos( $html, '<figure class="fc-fc-photo" style="aspect-ratio:1.6"' ) !== false );
+
+$own_photo = make_image( 1200, 800, 'card-photo' );
+update_post_meta( $pid, 'fc_card_photo', $own_photo );
+check( 'a chosen card photo is used instead', strpos( render( $pid ), 'card-photo' ) !== false );
+delete_post_meta( $pid, 'fc_card_photo' );
 
 update_option( 'fc_site_key', 'factcrescendo.com' );
 $html = render( $pid );
-check( 'listed site: WhatsApp number on the card', strpos( $html, '9049053770' ) !== false && strpos( $html, 'class="fc-cc-wa"' ) !== false );
-update_option( 'fc_site_key', 'srilanka.factcrescendo.com' );
-check( 'Sri Lanka: Sri Lanka number on the card', strpos( render( $pid ), '+94 77 151 4696' ) !== false );
+check( 'Hindi site: Hindi headings', strpos( $html, 'फैक्ट चेक' ) !== false && strpos( $html, 'fc-fc--indic' ) !== false );
+reset_options();
 
+// Each post can choose
+$canva = make_image( 1280, 768, 'canva-card' );
+update_post_meta( $pid, 'fc_card_mode', 'image' );
+check( 'own picture chosen but not set: built-in card instead', strpos( render( $pid ), 'fc-fc-wrap' ) !== false );
+update_post_meta( $pid, 'fc_card_image', $canva );
+$html = render( $pid );
+check( 'own picture (Canva) replaces the card', strpos( $html, 'fc-own-card' ) !== false && strpos( $html, 'canva-card' ) !== false && strpos( $html, 'fc-fc-wrap' ) === false );
+check( 'own picture has readable alt text', strpos( $html, 'alt="Fact check. Rating: Misleading. Claim: ' ) !== false );
+update_post_meta( $pid, 'fc_card_mode', 'off' );
+$html = render( $pid );
+check( 'post can switch the card off; author box stays', strpos( $html, 'fc-fc' ) === false && strpos( $html, 'fc-own-card' ) === false && strpos( $html, 'fc-article-card' ) !== false );
+delete_post_meta( $pid, 'fc_card_mode' );
+
+// Site setting
 update_option( 'fc_card_design', 'simple' );
 $html = render( $pid );
-check( 'simple design can be chosen instead', strpos( $html, 'fc-hero' ) !== false && strpos( $html, 'class="fc-cc"' ) === false );
+check( 'simple design can be chosen instead', strpos( $html, 'fc-hero' ) !== false && strpos( $html, 'fc-fc-wrap' ) === false );
+check( 'simple design shows no ** marks', strpos( $html, '**' ) === false );
 update_option( 'fc_card_design', 'off' );
-$html = render( $pid );
-check( 'card can be switched off; author box stays', strpos( $html, 'fc-hero' ) === false && strpos( $html, 'fc-cc' ) === false && strpos( $html, 'fc-article-card' ) !== false );
+check( 'site can switch the card off', strpos( render( $pid ), 'fc-fc-wrap' ) === false );
+update_post_meta( $pid, 'fc_card_mode', 'card' );
+check( 'a post can still ask for the card', strpos( render( $pid ), 'fc-fc-wrap' ) !== false );
+delete_post_meta( $pid, 'fc_card_mode' );
+update_option( 'fc_card_design', 'canva' );
+check( 'old setting name still means the card', fc_card_design() === 'card' );
 update_option( 'fc_card_design', 'nonsense' );
-check( 'unknown design falls back to the default', fc_card_design() === 'canva' );
+check( 'unknown design falls back to the default', fc_card_design() === 'card' );
 delete_option( 'fc_card_design' );
 
 update_option( 'fc_logo_url', 'https://example.com/logo.png' );
@@ -218,7 +266,104 @@ delete_option( 'fc_logo_url' );
 add_filter( 'fc_card_labels', $hi = function( $w ) { $w['claim'] = 'दावा'; return $w; } );
 check( 'card words can be translated', strpos( render( $pid ), 'दावा' ) !== false );
 remove_filter( 'fc_card_labels', $hi );
+
+save_from_box( $pid, array_merge( $base, [ 'fc_card_mode' => 'sneaky', 'fc_card_image' => '999999', 'fc_featured_badge' => 'evil' ] ) );
+check( 'unknown card choices are not stored', ! metadata_exists( 'post', $pid, 'fc_card_mode' ) && ! metadata_exists( 'post', $pid, 'fc_card_image' ) && ! metadata_exists( 'post', $pid, 'fc_featured_badge' ) );
+save_from_box( $pid, array_merge( $base, [ 'fc_card_mode' => 'image', 'fc_card_image' => (string) $canva ] ) );
+check( 'card choice saves from the box', get_post_meta( $pid, 'fc_card_mode', true ) === 'image' && (int) get_post_meta( $pid, 'fc_card_image', true ) === $canva );
+delete_post_meta( $pid, 'fc_card_mode' );
 reset_options();
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+section( 'Featured image stamp' );
+
+reset_options();
+check( 'this server can draw images', fc_featured_can_draw() );
+
+/** Saves the post the way the block editor does, then returns its featured image. */
+function save_rest( $post_id, $body = [] ) {
+    $req = new WP_REST_Request( 'POST', '/wp/v2/posts/' . $post_id );
+    $req->set_body_params( $body );
+    rest_do_request( $req );
+    return (int) get_post_thumbnail_id( $post_id );
+}
+
+$pid   = make_post( $base );
+$plain_photo = make_image( 1600, 1000, 'plain' );
+$thumb = save_rest( $pid, [ 'featured_media' => $plain_photo ] );
+$meta  = wp_get_attachment_metadata( $thumb );
+check( 'saving stamps a copy of the photo', $thumb && $thumb !== $plain_photo );
+check( 'stamped copy is 1280 × 768', ( $meta['width'] ?? 0 ) === 1280 && ( $meta['height'] ?? 0 ) === 768, wp_json_encode( $meta ) );
+check( 'misleading gets the fact-checked stamp', strpos( get_attached_file( $thumb ), 'fact-checked' ) !== false );
+check( 'the plain photo is kept', get_post( $plain_photo ) && (int) get_post_meta( $pid, '_fc_featured_source', true ) === $plain_photo );
+check( 'fact card uses the plain photo, not the stamped one', fc_card_photo_id( $pid ) === $plain_photo && strpos( render( $pid ), 'plain' ) !== false );
+
+// The stamp really is drawn: the bottom-left corner is no longer plain blue.
+$im  = imagecreatefromjpeg( get_attached_file( $thumb ) );
+$rgb = imagecolorat( $im, 104 + 150, 768 - 128 - 125 );
+check( 'stamp is drawn in the corner', ( ( $rgb >> 16 ) & 255 ) > 150, dechex( $rgb ) );
+
+check( 'saving again does not make another copy', save_rest( $pid, [ 'title' => 'Again' ] ) === $thumb );
+
+$first = $thumb;
+$thumb = save_rest( $pid, [ 'meta' => [ 'fc_rating' => 'insight' ] ] );
+check( 'insight gets the insight badge', strpos( get_attached_file( $thumb ), 'insight' ) !== false );
+check( 'old stamped copy is deleted', ! get_post( $first ) );
+
+$thumb = save_rest( $pid, [ 'meta' => [ 'fc_rating' => 'news' ] ] );
+check( 'news: plain photo, no stamp', $thumb === $plain_photo );
+
+$thumb = save_rest( $pid, [ 'meta' => [ 'fc_featured_badge' => 'fact-checked' ] ] );
+check( 'editor can force a stamp', $thumb !== $plain_photo && strpos( get_attached_file( $thumb ), 'fact-checked' ) !== false );
+
+$made = $thumb;
+$thumb = save_rest( $pid, [ 'meta' => [ 'fc_featured_badge' => 'none' ] ] );
+check( '"No stamp" puts the plain photo back', $thumb === $plain_photo && ! get_post( $made ) );
+
+$canva_featured = make_image( 1280, 768, 'canva-featured' );
+$thumb = save_rest( $pid, [ 'featured_media' => $canva_featured ] );
+check( 'own Canva featured image is left alone with "No stamp"', $thumb === $canva_featured );
+check( 'the own image is never deleted', get_post( $canva_featured ) && get_post( $plain_photo ) );
+
+$pid2 = make_post( $base );
+$thumb = save_rest( $pid2, [ 'featured_media' => $plain_photo ] );
+$other = $thumb;
+$pid3 = make_post( $base );
+$thumb = save_rest( $pid3, [ 'featured_media' => $other ] );
+check( 'a stamped copy is never stamped again', (int) get_post_meta( $pid3, '_fc_featured_source', true ) === $plain_photo && get_post( $other ) );
+
+save_rest( $pid2, [ 'featured_media' => 0 ] );
+check( 'featured image removed: its stamped copy is deleted', ! get_post( $other ) && get_post( $plain_photo ) );
+
+$old = wp_insert_post( [ 'post_title' => 'Old', 'post_status' => 'publish', 'post_date_gmt' => '2020-01-01 00:00:00', 'post_date' => '2020-01-01 00:00:00' ] );
+foreach ( $base as $k => $v ) update_post_meta( $old, $k, $v );
+update_option( 'fc_featured_since', time() - 60 );
+check( 'older posts keep their image (likely already stamped)', save_rest( $old, [ 'featured_media' => $canva_featured ] ) === $canva_featured );
+
+$pid4 = make_post( array_merge( $base, [ 'fc_is_fact_check' => '0' ] ) );
+check( 'normal posts are not stamped', save_rest( $pid4, [ 'featured_media' => $plain_photo ] ) === $plain_photo );
+
+update_option( 'fc_featured_stamps', '0' );
+$pid5 = make_post( $base );
+check( 'switched off in settings: nothing is stamped', save_rest( $pid5, [ 'featured_media' => $plain_photo ] ) === $plain_photo );
+delete_option( 'fc_featured_stamps' );
+
+$pid6 = make_post( $base );
+$_POST = [ 'fc_fields_nonce' => wp_create_nonce( 'fc_save_fields' ) ] + wp_slash( $base ) + [ '_thumbnail_id' => $plain_photo ];
+wp_update_post( [ 'ID' => $pid6, '_thumbnail_id' => $plain_photo ] );
+$_POST = [];
+$thumb = (int) get_post_thumbnail_id( $pid6 );
+check( 'classic editor save stamps too', $thumb && $thumb !== $plain_photo );
+wp_delete_post( $pid6, true );
+check( 'deleting the post deletes its stamped copy', ! get_post( $thumb ) && get_post( $plain_photo ) );
+
+wp_set_current_user( 0 );
+$pid7 = make_post( $base );
+set_post_thumbnail( $pid7, $plain_photo );
+fc_featured_sync( $pid7 );
+wp_set_current_user( 1 );
+check( 'logged-out saves never make images', (int) get_post_thumbnail_id( $pid7 ) === $plain_photo );
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -312,6 +457,11 @@ section( 'REST API' );
 
 $res  = rest_do_request( new WP_REST_Request( 'GET', '/fc/v1/post/' . $pid ) );
 $data = $res->get_data();
+update_post_meta( $pid, 'fc_fact', 'Was **false** all along' );
+$data = rest_do_request( new WP_REST_Request( 'GET', '/fc/v1/post/' . $pid ) )->get_data();
+check( 'API fact has no ** marks', ( $data['fact'] ?? '' ) === 'Was false all along' );
+update_post_meta( $pid, 'fc_fact', $base['fc_fact'] );
+$data = rest_do_request( new WP_REST_Request( 'GET', '/fc/v1/post/' . $pid ) )->get_data();
 check( 'single post endpoint works', $res->get_status() === 200 && ( $data['claim'] ?? '' ) === $base['fc_claim'] && $data['is_fact_check'] === true, wp_json_encode( $data ) );
 
 $draft = wp_insert_post( [ 'post_title' => 'Draft', 'post_status' => 'draft' ] );

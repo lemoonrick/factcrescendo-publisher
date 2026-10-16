@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       FactCrescendo Publisher
  * Plugin URI:        https://factcrescendo.com
- * Description:       Automates fact-check publishing. Built-in fact-check fields, REST API, auto-injected Fact Card / Author Box / WhatsApp Banner, ClaimReview schema, and article narration.
+ * Description:       Automates fact-check publishing. Built-in fact-check fields, REST API, auto-injected Fact Card / stamped Featured Image / Author Box / WhatsApp Banner, ClaimReview schema, and article narration.
  * Version:           4.6.4
  * Author:            FactCrescendo
  * License:           GPL-2.0+
@@ -22,6 +22,7 @@ require_once FC_PUBLISHER_DIR . 'includes/sites.php';
 require_once FC_PUBLISHER_DIR . 'includes/rest-api.php';
 require_once FC_PUBLISHER_DIR . 'includes/content-injection.php';
 require_once FC_PUBLISHER_DIR . 'includes/fact-card.php';
+require_once FC_PUBLISHER_DIR . 'includes/featured-image.php';
 require_once FC_PUBLISHER_DIR . 'includes/settings-page.php';
 require_once FC_PUBLISHER_DIR . 'includes/seo-schema.php';
 require_once FC_PUBLISHER_DIR . 'includes/updater.php';
@@ -45,5 +46,8 @@ function fc_publisher_uninstall() {
     delete_option( 'fc_site_key' );
     delete_option( 'fc_card_design' );
     delete_option( 'fc_show_whatsapp_banner' );
+    delete_option( 'fc_featured_stamps' );
+    delete_option( 'fc_featured_corner' );
+    delete_option( 'fc_featured_since' );
     delete_transient( 'fc_latest_release' );
 }

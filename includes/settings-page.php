@@ -41,9 +41,23 @@ function fc_register_settings() {
     register_setting( 'fc_publisher_settings_group', 'fc_card_design', [
         'type'              => 'string',
         'sanitize_callback' => function( $v ) {
-            return in_array( $v, [ 'canva', 'simple', 'off' ], true ) ? $v : 'canva';
+            return in_array( $v, [ 'card', 'simple', 'off' ], true ) ? $v : 'card';
         },
-        'default'           => 'canva',
+        'default'           => 'card',
+    ] );
+
+    register_setting( 'fc_publisher_settings_group', 'fc_featured_stamps', [
+        'type'              => 'string',
+        'sanitize_callback' => function( $v ) { return $v === '1' ? '1' : '0'; },
+        'default'           => '1',
+    ] );
+
+    register_setting( 'fc_publisher_settings_group', 'fc_featured_corner', [
+        'type'              => 'string',
+        'sanitize_callback' => function( $v ) {
+            return in_array( $v, [ 'top-left', 'top-right', 'bottom-left', 'bottom-right' ], true ) ? $v : 'bottom-left';
+        },
+        'default'           => 'bottom-left',
     ] );
 
     register_setting( 'fc_publisher_settings_group', 'fc_show_whatsapp_banner', [
@@ -185,14 +199,14 @@ function fc_render_settings_page() {
 
             <div class="fc-settings-section">
                 <h2>Fact Card</h2>
-                <p class="fc-section-desc">Shown at the top of every fact-check article.</p>
+                <p class="fc-section-desc">Shown at the top of every fact-check article. Each post can pick something else in its Fact Check panel, including your own picture made in Canva.</p>
                 <div class="fc-field">
                     <label for="fc_card_design">Card design</label>
                     <select id="fc_card_design" name="fc_card_design">
                         <?php
                         $fc_design = fc_card_design();
                         foreach ( [
-                            'canva'  => 'FactCrescendo thumbnail (recommended)',
+                            'card'   => 'FactCrescendo card (recommended)',
                             'simple' => 'Simple — photo with claim and fact bar underneath',
                             'off'    => 'No card',
                         ] as $value => $label ) :
@@ -207,6 +221,40 @@ function fc_render_settings_page() {
                         value="<?php echo esc_attr( get_option( 'fc_logo_url', '' ) ); ?>"
                         placeholder="Leave empty to use the theme's logo">
                     <p class="fc-field-hint"><?php echo fc_card_logo_url() !== '' ? 'Currently using: ' . esc_html( fc_card_logo_url() ) : 'No logo found — the card shows the site name instead.'; ?></p>
+                </div>
+            </div>
+
+            <div class="fc-settings-section">
+                <h2>Featured Image Stamp</h2>
+                <p class="fc-section-desc">Set a plain 1280 × 768 photo as the featured image and the plugin adds the stamp when the post is saved: <strong>Fact checked</strong> for most ratings, <strong>Insight</strong> for Insight articles, none for News. The plain photo is kept for the fact card. Posts published before this was added are left alone unless a stamp is picked on the post.</p>
+
+                <?php if ( ! fc_featured_can_draw() ) : ?>
+                <p class="fc-field-hint" style="color:#b32d2e;">This server can't draw images (the PHP GD extension is missing), so no stamps are added. Ask your host to turn on GD.</p>
+                <?php endif; ?>
+
+                <div class="fc-field">
+                    <label class="fc-toggle">
+                        <input type="hidden" name="fc_featured_stamps" value="0">
+                        <input type="checkbox" name="fc_featured_stamps" value="1" <?php checked( get_option( 'fc_featured_stamps', '1' ), '1' ); ?>>
+                        <span class="fc-toggle-track"><span class="fc-toggle-thumb"></span></span>
+                        <span class="fc-toggle-text">Add stamps to featured images on this site</span>
+                    </label>
+                    <p class="fc-field-hint">Switch off if you make every featured image in Canva.</p>
+                </div>
+
+                <div class="fc-field">
+                    <label for="fc_featured_corner">Stamp position</label>
+                    <select id="fc_featured_corner" name="fc_featured_corner">
+                        <?php foreach ( [
+                            'bottom-left'  => 'Bottom left',
+                            'bottom-right' => 'Bottom right',
+                            'top-left'     => 'Top left',
+                            'top-right'    => 'Top right',
+                        ] as $value => $label ) : ?>
+                        <option value="<?php echo esc_attr( $value ); ?>" <?php selected( fc_featured_corner(), $value ); ?>><?php echo esc_html( $label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="fc-field-hint">Applies to posts saved after the change.</p>
                 </div>
             </div>
 
@@ -269,6 +317,8 @@ function fc_render_settings_page() {
             <h2>Stamp Image Override</h2>
             <p class="fc-section-desc">Stamps ship with the plugin and load from this site, so they keep working even if another site is down. To use different images here, add this to your theme's functions.php:</p>
             <div class="fc-code-block">add_filter( 'fc_stamp_map', function( $map ) {<br>&nbsp;&nbsp;&nbsp;&nbsp;$map['false'] = 'https://yoursite.com/False.png';<br>&nbsp;&nbsp;&nbsp;&nbsp;return $map;<br>} );</div>
+            <p class="fc-section-desc">That changes the author box stamps. For the featured image stamps, point to transparent PNG files on this server:</p>
+            <div class="fc-code-block">add_filter( 'fc_featured_stamp_files', function( $files ) {<br>&nbsp;&nbsp;&nbsp;&nbsp;$files['fact-checked'] = get_stylesheet_directory() . '/my-stamp.png';<br>&nbsp;&nbsp;&nbsp;&nbsp;return $files;<br>} );</div>
         </div>
 
         <div class="fc-settings-section">

@@ -19,7 +19,8 @@
     var editPostPkg = wp.editPost || {};
     var SidePanel   = editorPkg.PluginDocumentSettingPanel || editPostPkg.PluginDocumentSettingPanel;
     var PrePublish  = editorPkg.PluginPrePublishPanel || editPostPkg.PluginPrePublishPanel;
-    var settings    = window.fcEditor || { ratings: [] };
+    var blockEditor = wp.blockEditor || {};
+    var settings    = window.fcEditor || { ratings: [], cardModes: [], badges: [], featuredHelp: '' };
 
     if ( ! SidePanel || ! useSelect || ! useDispatch ) return;
 
@@ -53,7 +54,38 @@
         if ( ! String( m.fc_claim || '' ).trim() )   out.push( 'Claim' );
         if ( ! String( m.fc_fact || '' ).trim() )    out.push( 'Fact' );
         if ( ! f.hasImage )                          out.push( 'Featured image — the fact card shows no picture' );
+        if ( m.fc_card_mode === 'image' && ! m.fc_card_image ) out.push( 'Card picture — the site default card shows instead' );
         return out;
+    }
+
+    /** Pick an image from the media library; keeps only its ID. */
+    function ImagePicker( props ) {
+        var MediaUpload = blockEditor.MediaUpload;
+        var Check       = blockEditor.MediaUploadCheck || wp.element.Fragment;
+        var media = useSelect( function ( select ) {
+            return props.id ? select( 'core' ).getMedia( props.id ) : null;
+        }, [ props.id ] );
+        if ( ! MediaUpload ) return null;
+
+        var sizes = media && media.media_details && media.media_details.sizes;
+        var src   = media ? ( sizes && sizes.medium ? sizes.medium.source_url : media.source_url ) : '';
+
+        return el( C.BaseControl, { id: props.name, label: props.label, help: props.help, __nextHasNoMarginBottom: true },
+            el( Check, null,
+                el( MediaUpload, {
+                    allowedTypes: [ 'image' ],
+                    value: props.id,
+                    onSelect: function ( m ) { props.onChange( m.id ); },
+                    render: function ( o ) {
+                        return el( 'div', null,
+                            src && el( 'img', { src: src, alt: '', style: { display: 'block', maxWidth: '100%', borderRadius: '4px', marginBottom: '8px' } } ),
+                            el( C.Button, { variant: 'secondary', onClick: o.open }, props.id ? 'Replace image' : 'Choose image' ),
+                            props.id ? el( C.Button, { variant: 'link', isDestructive: true, style: { marginLeft: '12px' }, onClick: function () { props.onChange( 0 ); } }, 'Remove' ) : null
+                        );
+                    }
+                } )
+            )
+        );
     }
 
     var PANEL = 'fc-fact-check/fc-fact-check';
@@ -128,6 +160,44 @@
                 onChange: function ( v ) { f.set( 'fc_fact', v ); },
                 __nextHasNoMarginBottom: true
             } ),
+
+            active && el( C.PanelBody, {
+                    title: 'Fact card and featured image',
+                    initialOpen: !! ( m.fc_card_mode || m.fc_featured_badge || m.fc_card_photo ),
+                    className: 'fc-visuals'
+                },
+                el( C.SelectControl, {
+                    label: 'Fact card',
+                    value: m.fc_card_mode || '',
+                    options: settings.cardModes,
+                    onChange: function ( v ) { f.set( 'fc_card_mode', v ); },
+                    __next40pxDefaultSize: true,
+                    __nextHasNoMarginBottom: true
+                } ),
+                m.fc_card_mode === 'image' && el( ImagePicker, {
+                    name: 'fc-card-image',
+                    label: 'Card picture',
+                    help: 'Shown instead of the built-in card, exactly as you made it.',
+                    id: m.fc_card_image || 0,
+                    onChange: function ( id ) { f.set( 'fc_card_image', id ); }
+                } ),
+                el( ImagePicker, {
+                    name: 'fc-card-photo',
+                    label: 'Card photo (optional)',
+                    help: 'The photo inside the built-in card. Leave empty to use the plain featured image.',
+                    id: m.fc_card_photo || 0,
+                    onChange: function ( id ) { f.set( 'fc_card_photo', id ); }
+                } ),
+                el( C.SelectControl, {
+                    label: 'Featured image stamp',
+                    help: settings.featuredHelp,
+                    value: m.fc_featured_badge || '',
+                    options: settings.badges,
+                    onChange: function ( v ) { f.set( 'fc_featured_badge', v ); },
+                    __next40pxDefaultSize: true,
+                    __nextHasNoMarginBottom: true
+                } )
+            ),
 
             active && el( C.PanelBody, {
                     title: 'Where the claim came from',

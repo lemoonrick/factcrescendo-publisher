@@ -48,7 +48,7 @@ function fc_rest_get_post( $request ) {
         'rating'        => $rating,
         'rating_label'  => fc_get_rating_label( $rating ),
         'claim'         => fc_meta( 'fc_claim', $post_id ),
-        'fact'          => fc_meta( 'fc_fact', $post_id ),
+        'fact'          => fc_plain_fact( fc_meta( 'fc_fact', $post_id ) ),
         'stamp_url'     => fc_get_stamp_url( $rating ),
         'audio_url'     => get_post_meta( $post_id, 'fc_audio_url', true ) ?: null,
         'audio_status'  => get_post_meta( $post_id, 'fc_audio_status', true ) ?: 'none',
@@ -100,7 +100,7 @@ function fc_rest_get_posts( $request ) {
             'rating'       => $rating,
             'rating_label' => fc_get_rating_label( $rating ),
             'claim'        => fc_meta( 'fc_claim', $post->ID ),
-            'fact'         => fc_meta( 'fc_fact', $post->ID ),
+            'fact'         => fc_plain_fact( fc_meta( 'fc_fact', $post->ID ) ),
             'stamp_url'    => fc_get_stamp_url( $rating ),
             'audio_url'    => get_post_meta( $post->ID, 'fc_audio_url', true ) ?: null,
         ];

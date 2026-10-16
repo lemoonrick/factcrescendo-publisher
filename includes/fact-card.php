@@ -1,37 +1,65 @@
 <?php
 /**
- * The fact card in the FactCrescendo thumbnail design.
+ * The fact card at the top of a fact-check article.
  *
- * Rebuilt from the Canva thumbnail, as a live part of the page rather than
- * a picture: the logo, the photo with its rating stamp, the WhatsApp number
- * and the result on one side; the red CLAIM and FACT CHECK boxes on the
- * other. On narrow screens it becomes one column, in reading order.
+ * Each post picks how its card is shown (the site setting is the default):
+ *   card   – the built-in card: logo, photo and rating on the left,
+ *            CLAIM and FACT CHECK boxes on the right. One column on phones.
+ *   simple – the older photo-and-strip card (content-injection.php).
+ *   image  – the editor's own card picture, e.g. made in Canva.
+ *   off    – no card.
  *
- * It sizes itself by the width of the article column it sits in, not the
- * screen, so it lays out correctly in a narrow theme column on a wide
- * monitor too. Browsers too old to do that get the one-column layout,
- * which works at any width.
- *
- * Which design a site shows is a setting (fc_card_design). This one is the
- * default; "simple" is the earlier card in content-injection.php, kept so
- * a site can switch back, and a future design can be added alongside.
+ * The card never puts a stamp on the photo. Stamps belong to the featured
+ * image (featured-image.php), and the card always uses the plain photo.
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-/** Which card this site shows: 'canva' (default), 'simple' or 'off'. */
+/** The site's default card: 'card', 'simple' or 'off'. */
 function fc_card_design() {
-    $design = (string) get_option( 'fc_card_design', 'canva' );
-    return in_array( $design, [ 'canva', 'simple', 'off' ], true ) ? $design : 'canva';
+    $design = (string) get_option( 'fc_card_design', 'card' );
+    if ( $design === 'canva' ) return 'card'; // old name for the same setting
+    return in_array( $design, [ 'card', 'simple', 'off' ], true ) ? $design : 'card';
+}
+
+/** What this post shows: 'card', 'simple', 'image' or 'off'. */
+function fc_card_mode( $post_id ) {
+    $mode = (string) fc_meta( 'fc_card_mode', $post_id );
+
+    if ( $mode === 'off' ) return 'off';
+    if ( $mode === 'image' ) {
+        // No picture chosen yet: fall back to the site default, never a blank.
+        return fc_attachment_image_id( fc_meta( 'fc_card_image', $post_id ) ) ? 'image' : fc_card_design();
+    }
+    if ( $mode === 'card' ) return fc_card_design() === 'simple' ? 'simple' : 'card';
+
+    return fc_card_design();
+}
+
+/** The ID if it is an image in the media library, otherwise 0. */
+function fc_attachment_image_id( $id ) {
+    $id = absint( $id );
+    return ( $id && wp_attachment_is_image( $id ) ) ? $id : 0;
 }
 
 /**
- * The logo shown on the card.
- *
- * The logo set under Settings if there is one, otherwise the logo the
- * theme already uses, so most sites need nothing set. Empty when neither
- * exists; the card then shows the site's name instead.
+ * The plain photo for the card, never the stamped featured image:
+ * the "Card photo" set on the post, else the original photo behind a
+ * featured image this plugin stamped, else the featured image.
  */
+function fc_card_photo_id( $post_id ) {
+    $own = fc_attachment_image_id( fc_meta( 'fc_card_photo', $post_id ) );
+    if ( $own ) return $own;
+
+    $thumb = (int) get_post_thumbnail_id( $post_id );
+    if ( $thumb && $thumb === (int) get_post_meta( $post_id, '_fc_featured_made', true ) ) {
+        $source = fc_attachment_image_id( get_post_meta( $post_id, '_fc_featured_source', true ) );
+        if ( $source ) return $source;
+    }
+    return $thumb;
+}
+
+/** The logo from Settings, else the theme's logo, else ''. */
 function fc_card_logo_url() {
     $url = (string) get_option( 'fc_logo_url', '' );
     if ( $url !== '' ) return $url;
@@ -44,219 +72,307 @@ function fc_card_logo_url() {
     return '';
 }
 
-/**
- * Builds the card. Returns '' when there is nothing to show.
- *
- * Every value is escaped where it is printed. Claim and fact are plain text
- * with line breaks kept.
- */
-function fc_build_canva_card( $post_id, $rating, $rating_label, $claim, $fact ) {
+/** The fact without its **highlight** marks, for plain-text uses. */
+function fc_plain_fact( $text ) {
+    return preg_replace( '/\*\*(.+?)\*\*/s', '$1', (string) $text );
+}
+
+/** The card's headings, in the site's language. */
+function fc_card_labels( $post_id ) {
+    $words = [
+        'en' => [ 'claim' => 'Claim', 'fact' => 'Fact check', 'rating' => 'Rating' ],
+        'hi' => [ 'claim' => 'दावा', 'fact' => 'फैक्ट चेक', 'rating' => 'रेटिंग' ],
+        'mr' => [ 'claim' => 'दावा', 'fact' => 'फॅक्ट चेक', 'rating' => 'रेटिंग' ],
+    ];
+    $lang = fc_site_lang();
+
+    /** Filter: change the headings. Keys: claim, fact, rating. */
+    return apply_filters( 'fc_card_labels', $words[ $lang ] ?? $words['en'], $post_id );
+}
+
+/** Colour family for a rating: red, orange, amber or green. */
+function fc_card_tone( $rating ) {
+    $map = [
+        'false'           => 'red',
+        'altered'         => 'red',
+        'partly-false'    => 'orange',
+        'misleading'      => 'orange',
+        'missing-context' => 'amber',
+        'satire'          => 'amber',
+        'insight'         => 'green',
+        'news'            => 'green',
+    ];
+    return $map[ strtolower( (string) $rating ) ] ?? 'amber';
+}
+
+/** Icon inside the rating badge, so the rating never relies on colour alone. */
+function fc_card_glyph( $rating ) {
+    $x     = '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>';
+    $mark  = '<path d="M12 5v8.2"/><circle class="fc-fill" cx="12" cy="18.3" r="1.9"/>';
+    $dots  = '<circle class="fc-fill" cx="5.5" cy="12" r="2.1"/><circle class="fc-fill" cx="12" cy="12" r="2.1"/><circle class="fc-fill" cx="18.5" cy="12" r="2.1"/>';
+    $check = '<path d="M5 12.5l4.5 4.5L19 7.5"/>';
+    $info  = '<circle class="fc-fill" cx="12" cy="5.8" r="1.9"/><path d="M12 10.5V19"/>';
+
+    $map = [
+        'false'        => $x,    'altered'         => $x,
+        'partly-false' => $mark, 'misleading'      => $mark,
+        'satire'       => $dots, 'missing-context' => $dots,
+        'insight'      => $info, 'news'            => $check,
+    ];
+    return $map[ strtolower( (string) $rating ) ] ?? $dots;
+}
+
+/** Text size step, 1 (short) to 4 (long), so long text still fits. */
+function fc_card_size( $text ) {
+    $len = function_exists( 'mb_strlen' ) ? mb_strlen( $text ) : strlen( $text );
+    if ( $len <= 70 )  return 1;
+    if ( $len <= 140 ) return 2;
+    if ( $len <= 240 ) return 3;
+    return 4;
+}
+
+/** True when the text uses a non-Latin script (it needs more line height). */
+function fc_card_is_indic( $text ) {
+    return (bool) preg_match( '/[^\x{0000}-\x{024F}\x{2000}-\x{206F}]/u', $text );
+}
+
+/** The fact card for a post, in whichever way the post asks for. */
+function fc_render_fact_card( $post_id, $rating, $rating_label, $claim, $fact ) {
+    switch ( fc_card_mode( $post_id ) ) {
+        case 'off':
+            return '';
+        case 'image':
+            return fc_build_card_image( $post_id, $rating_label, $claim );
+        case 'simple':
+            return fc_build_fact_card( $post_id, $rating, $rating_label, $claim, fc_plain_fact( $fact ), get_option( 'fc_logo_url', '' ) );
+        default:
+            return fc_build_card( $post_id, $rating, $rating_label, $claim, $fact );
+    }
+}
+
+/** The editor's own card picture (e.g. from Canva), shown as it is. */
+function fc_build_card_image( $post_id, $rating_label, $claim ) {
+    $id = fc_attachment_image_id( fc_meta( 'fc_card_image', $post_id ) );
+    if ( ! $id ) return '';
+
+    // Screen readers get the text that is in the picture.
+    $alt = 'Fact check.';
+    if ( $rating_label !== '' ) $alt .= ' Rating: ' . $rating_label . '.';
+    if ( $claim !== '' )        $alt .= ' Claim: ' . $claim;
+
+    $img = wp_get_attachment_image( $id, 'large', false, [
+        'class'         => 'fc-own-card-img',
+        'alt'           => wp_strip_all_tags( $alt ),
+        'loading'       => 'eager',
+        'fetchpriority' => 'high',
+    ] );
+
+    return '<style>'
+        . '.fc-own-card{margin:0 0 28px !important;padding:0 !important;line-height:0}'
+        . '.fc-own-card .fc-own-card-img{display:block;width:100% !important;height:auto !important;max-width:100% !important;margin:0 !important;border-radius:12px}'
+        . '</style><figure class="fc-own-card">' . $img . '</figure>';
+}
+
+/** The built-in card. '' when there is nothing to show. */
+function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
 
     $claim = trim( (string) $claim );
     $fact  = trim( (string) $fact );
 
-    // Built from the attachment directly so "hide featured image" plugins,
-    // which blank the theme's copy, don't blank this one too. See the note
-    // in fc_build_fact_card().
-    $thumb_id = get_post_thumbnail_id( $post_id );
-    $img_html = $thumb_id ? wp_get_attachment_image( $thumb_id, 'large', false, [
-        'class'         => 'fc-cc-photo-img',
+    // From the attachment directly, so "hide featured image" plugins
+    // (which blank the theme's copy) don't blank this one.
+    $photo_id = fc_card_photo_id( $post_id );
+    $img_html = $photo_id ? wp_get_attachment_image( $photo_id, 'large', false, [
+        'class'         => 'fc-fc-img',
         'loading'       => 'eager',
         'fetchpriority' => 'high',
-        'sizes'         => '(max-width: 700px) 100vw, 420px',
+        'sizes'         => '(max-width: 640px) 100vw, 360px',
     ] ) : '';
 
     if ( $img_html === '' && $claim === '' && $fact === '' ) return '';
 
-    $site      = fc_site_profile();
-    $logo_url  = fc_card_logo_url();
-    $stamp_url = fc_get_stamp_url( $rating );
-    $fonts     = FC_PUBLISHER_URL . 'assets/fonts/';
-    $latin     = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
-    $deva      = 'U+0900-097F,U+1CD0-1CF9,U+200C-200D,U+20A8,U+20B9,U+20F0,U+25CC,U+A830-A839,U+A8E0-A8FF';
+    // The frame follows the photo's shape (within limits), so little is cropped.
+    $ratio = 1.5;
+    $meta  = $photo_id ? wp_get_attachment_metadata( $photo_id ) : [];
+    if ( ! empty( $meta['width'] ) && ! empty( $meta['height'] ) ) {
+        $ratio = max( 1.38, min( 1.6, $meta['width'] / $meta['height'] ) );
+    }
 
-    /**
-     * The words printed on the card, so a site can translate them.
-     * Keys: claim, fact, result, whatsapp.
-     */
-    $words = apply_filters( 'fc_card_labels', [
-        'claim'    => 'Claim',
-        'fact'     => 'Fact Check',
-        'result'   => 'Result',
-        'whatsapp' => 'Whatsapp us',
-    ], $post_id );
+    $words    = fc_card_labels( $post_id );
+    $logo_url = fc_card_logo_url();
+    $indic    = fc_card_is_indic( $claim . $fact . $rating_label . implode( '', $words ) );
+    $classes  = 'fc-fc fc-fc--' . fc_card_tone( $rating ) . ( $indic ? ' fc-fc--indic' : '' );
+    $fonts    = FC_PUBLISHER_URL . 'assets/fonts/';
+
+    // Escaped first; then **words** become a highlight.
+    $fact_html = preg_replace( '/\*\*(.+?)\*\*/s', '<mark>$1</mark>', esc_html( $fact ) );
 
     ob_start();
     ?>
     <style>
-    /* Fonts ship with the plugin and load from this site. Each file is only
-       downloaded when the card actually uses a character in its range, so a
-       Hindi page fetches the Devanagari file and an English page doesn't. */
-    @font-face { font-family:'FC Poppins'; font-style:normal; font-weight:600; font-display:swap; src:url(<?php echo esc_url( $fonts . 'poppins-latin-600-normal.woff2' ); ?>) format('woff2'); unicode-range:<?php echo esc_html( $latin ); ?>; }
-    @font-face { font-family:'FC Poppins'; font-style:normal; font-weight:700; font-display:swap; src:url(<?php echo esc_url( $fonts . 'poppins-latin-700-normal.woff2' ); ?>) format('woff2'); unicode-range:<?php echo esc_html( $latin ); ?>; }
-    @font-face { font-family:'FC Poppins'; font-style:normal; font-weight:600; font-display:swap; src:url(<?php echo esc_url( $fonts . 'poppins-devanagari-600-normal.woff2' ); ?>) format('woff2'); unicode-range:<?php echo esc_html( $deva ); ?>; }
-    @font-face { font-family:'FC Poppins'; font-style:normal; font-weight:700; font-display:swap; src:url(<?php echo esc_url( $fonts . 'poppins-devanagari-700-normal.woff2' ); ?>) format('woff2'); unicode-range:<?php echo esc_html( $deva ); ?>; }
-    @font-face { font-family:'FC Bebas'; font-style:normal; font-weight:400; font-display:swap; src:url(<?php echo esc_url( $fonts . 'bebas-neue-latin-400-normal.woff2' ); ?>) format('woff2'); unicode-range:<?php echo esc_html( $latin ); ?>; }
+    /* Fonts ship with the plugin. A file only downloads when the page uses
+       a letter it covers; other scripts use the visitor's own font. */
+    @font-face { font-family:'FC Archivo'; font-style:normal; font-weight:100 900; font-stretch:62% 125%; font-display:swap; src:url(<?php echo esc_url( $fonts . 'archivo-latin.woff2' ); ?>) format('woff2'); unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+    @font-face { font-family:'FC Devanagari'; font-style:normal; font-weight:100 900; font-display:swap; src:url(<?php echo esc_url( $fonts . 'noto-sans-devanagari.woff2' ); ?>) format('woff2'); unicode-range:U+0900-097F,U+1CD0-1CF9,U+200C-200D,U+20A8,U+20B9,U+25CC,U+A830-A839,U+A8E0-A8FF; }
 
-    /* Scripts Poppins doesn't cover (Tamil, Malayalam, Sinhala, Odia,
-       Gujarati, Bengali/Assamese) fall through to the visitor's system
-       font for those letters, which is what the site's own text uses. */
-    .fc-cc-wrap {
-        --fc-red:#ed1c24; --fc-green:#1f9d47; --fc-ink:#111111;
-        container-type:inline-size; margin:0 0 30px; color-scheme:light;
+    .fc-fc-wrap { container-type:inline-size; margin:0 0 30px; color-scheme:light; }
+    .fc-fc-wrap .fc-fc {
+        --red:#d90a1a; --green:#007840; --paper:#f6f1f0; --surface:#fefbfa;
+        --ink:#231412; --soft:#5a4c4a; --line:#dbd2d1; --lh:1.2;
+        display:flex; flex-direction:column; gap:16px;
+        background:var(--paper) !important; color:var(--ink) !important;
+        border-radius:20px; padding:18px 16px 20px; text-align:left;
+        font-family:'FC Archivo','FC Devanagari',system-ui,-apple-system,'Segoe UI',sans-serif;
     }
-    .fc-cc-wrap .fc-cc {
-        display:flex; flex-direction:column; gap:22px;
-        background:#ffffff !important; color:var(--fc-ink) !important;
-        border:1px solid #ececec; border-radius:18px; padding:22px 18px;
-        box-shadow:0 6px 24px -10px rgba(0,0,0,0.18);
-        font-family:'FC Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
-        box-sizing:border-box; text-align:left;
+    /* Rating colours: accent, icon on accent, highlight, bar tint, bar edge */
+    .fc-fc-wrap .fc-fc--green  { --v:#00884b; --v-on:#f7fef9; --v-hl:#a5efbe; --v-bg:#d5e9de; --v-edge:#a8d4be; }
+    .fc-fc-wrap .fc-fc--amber  { --v:#eaab05; --v-on:#261704; --v-hl:#ffdc75; --v-bg:#fbeed3; --v-edge:#f7e0a7; }
+    .fc-fc-wrap .fc-fc--orange { --v:#ec6f00; --v-on:#250f07; --v-hl:#ffc698; --v-bg:#fbe5d2; --v-edge:#f8cba5; }
+    .fc-fc-wrap .fc-fc--red    { --v:#b7191c; --v-on:#fff9f8; --v-hl:#ffc7be; --v-bg:#f3d7d6; --v-edge:#e6aeaf; }
+    .fc-fc-wrap .fc-fc--indic  { --lh:1.45; }
+
+    /* Keep the theme's article styles out of the card */
+    .fc-fc-wrap .fc-fc, .fc-fc-wrap .fc-fc * { box-sizing:border-box; }
+    .fc-fc-wrap .fc-fc p, .fc-fc-wrap .fc-fc figure { margin:0 !important; padding:0 !important; }
+    .fc-fc-wrap .fc-fc img { margin:0 !important; padding:0 !important; border:0 !important; box-shadow:none !important; }
+
+    .fc-fc-wrap .fc-fc-col { display:flex; flex-direction:column; gap:16px; min-width:0; }
+
+    .fc-fc-wrap .fc-fc-logo { height:40px !important; width:auto !important; max-width:70% !important; object-fit:contain; display:block; align-self:flex-start; }
+    .fc-fc-wrap .fc-fc-site { font-weight:800; font-size:20px; color:var(--ink) !important; }
+
+    /* Photo: the frame sets the shape, the photo fills it */
+    .fc-fc-wrap .fc-fc-photo {
+        position:relative; overflow:hidden; border-radius:16px; line-height:0;
+        background:#e7dfde; box-shadow:0 0 0 1.5px var(--line), 0 14px 26px -20px rgba(60,40,38,.45);
     }
-    .fc-cc-wrap .fc-cc *, .fc-cc-wrap .fc-cc *::before { box-sizing:border-box; }
-    /* Themes style img, figure and a inside articles; none of that belongs here. */
-    .fc-cc-wrap .fc-cc img { margin:0 !important; padding:0 !important; border:0 !important; box-shadow:none !important; max-width:100%; }
-    .fc-cc-wrap .fc-cc figure { margin:0 !important; padding:0 !important; }
-    .fc-cc-wrap .fc-cc a { text-decoration:none !important; border:0 !important; box-shadow:none !important; }
-
-    /* The two halves only exist as columns on wide cards. On narrow ones
-       their pieces join one column, put in reading order below. */
-    .fc-cc-wrap .fc-cc-left, .fc-cc-wrap .fc-cc-right { display:contents; }
-
-    .fc-cc-wrap .fc-cc-logo   { order:1; }
-    .fc-cc-wrap .fc-cc-photo  { order:2; }
-    .fc-cc-wrap .fc-cc-claim  { order:3; }
-    .fc-cc-wrap .fc-cc-fact   { order:4; }
-    .fc-cc-wrap .fc-cc-result { order:5; }
-    .fc-cc-wrap .fc-cc-wa     { order:6; }
-
-    /* Logo */
-    .fc-cc-wrap .fc-cc-logo { display:flex; align-items:center; justify-content:center; min-height:34px; }
-    .fc-cc-wrap .fc-cc-logo img { height:42px; width:auto; max-width:70%; object-fit:contain; display:block; }
-    .fc-cc-wrap .fc-cc-sitename { font-weight:700; font-size:20px; color:var(--fc-ink) !important; }
-
-    /* Photo, framed in red, stamp in the lower left as in the thumbnail */
-    /* The frame sets the shape and the photo fills it, so a theme's own
-       image size rules can't leave an empty band inside the frame. Some
-       themes (Twenty Twenty-One among them) write a max-width straight onto
-       small images, hence the !important on max-width too. */
-    .fc-cc-wrap .fc-cc-photo { position:relative; border:2px solid var(--fc-red) !important; line-height:0; overflow:hidden; background:#f3f3f3; aspect-ratio:3 / 2; }
-    .fc-cc-wrap .fc-cc-photo .fc-cc-photo-img { position:absolute; inset:0; display:block; width:100% !important; height:100% !important; max-width:none !important; max-height:none !important; object-fit:cover; }
-    .fc-cc-wrap .fc-cc-stamp {
-        position:absolute; left:8px; bottom:8px; width:26%; max-width:96px; min-width:58px; height:auto;
-        background:rgba(255,255,255,0.92); border-radius:50%; padding:3px !important;
-        box-shadow:0 2px 8px rgba(0,0,0,0.25) !important;
+    .fc-fc-wrap .fc-fc-photo .fc-fc-img {
+        position:absolute; inset:0; display:block; width:100% !important; height:100% !important;
+        max-width:none !important; max-height:none !important; object-fit:cover;
     }
 
-    /* CLAIM and FACT CHECK boxes, each with its tab sitting on the top edge */
-    .fc-cc-wrap .fc-cc-box {
-        position:relative; background:var(--fc-red) !important; border-radius:14px;
-        padding:34px 18px 18px; margin-top:14px;
-        box-shadow:0 4px 12px -4px rgba(237,28,36,0.45);
+    /* Rating bar: the colour is in the badge, the meaning in the words */
+    .fc-fc-wrap .fc-fc-rating {
+        display:flex; flex-direction:column; justify-content:center; gap:4px;
+        background:var(--v-bg); box-shadow:0 0 0 1.5px var(--v-edge); border-radius:16px; padding:14px 20px;
     }
-    .fc-cc-wrap .fc-cc-tab {
-        position:absolute; top:-17px; left:16px;
-        font-family:'FC Bebas', 'Oswald', 'Arial Narrow', sans-serif; font-weight:400;
-        font-size:25px; line-height:1; letter-spacing:1.5px; text-transform:uppercase;
-        color:#ffffff !important; background:var(--fc-red); padding:6px 22px 5px;
-        border:3px solid #ffffff; border-radius:999px; box-shadow:0 3px 8px rgba(0,0,0,0.28);
-        white-space:nowrap;
+    .fc-fc-wrap .fc-fc-rating-label {
+        font-size:12px; font-weight:600; font-stretch:80%; letter-spacing:.14em; text-transform:uppercase;
+        color:var(--soft) !important; line-height:1.2;
     }
-    .fc-cc-wrap .fc-cc-fact .fc-cc-tab { background:var(--fc-green); }
-    .fc-cc-wrap .fc-cc-text {
-        color:#ffffff !important; font-weight:600; font-size:15.5px; line-height:1.6;
-        margin:0; white-space:pre-line; overflow-wrap:anywhere;
+    .fc-fc-wrap .fc-fc-rating-value {
+        display:flex; align-items:center; gap:12px; font-size:26px; font-weight:720;
+        letter-spacing:-.01em; line-height:1.15; color:var(--ink) !important;
+    }
+    .fc-fc-wrap .fc-fc-badge {
+        flex:none; width:.95em; height:.95em; border-radius:50%; background:var(--v); color:var(--v-on);
+        display:grid; place-items:center;
+    }
+    .fc-fc-wrap .fc-fc-badge svg { width:52%; height:52%; fill:none; stroke:currentColor; stroke-width:3.2; stroke-linecap:round; stroke-linejoin:round; display:block; }
+    .fc-fc-wrap .fc-fc-badge svg .fc-fill { fill:currentColor; stroke:none; }
+
+    /* CLAIM and FACT CHECK boxes, each with a pill on its top edge */
+    .fc-fc-wrap .fc-fc-box {
+        position:relative; border-radius:16px; padding:30px 20px 20px !important; margin-top:16px !important;
+        display:flex; flex-direction:column; justify-content:center;
+    }
+    .fc-fc-wrap .fc-fc .fc-fc-pill {
+        position:absolute; top:-16px; left:18px; height:32px; padding:0 18px !important;
+        display:flex; align-items:center; border-radius:999px; white-space:nowrap;
+        font-size:20px; font-weight:800; font-stretch:68%; letter-spacing:.07em; text-transform:uppercase;
+        line-height:1; box-shadow:0 0 0 5px var(--paper);
+    }
+    .fc-fc-wrap .fc-fc-claim { background:var(--red) !important; color:#fffafa !important; box-shadow:0 18px 30px -22px rgba(190,20,30,.7); }
+    .fc-fc-wrap .fc-fc-claim .fc-fc-pill { background:var(--surface); color:var(--red) !important; }
+    .fc-fc-wrap .fc-fc-fact { background:var(--surface) !important; color:var(--ink) !important; box-shadow:0 0 0 1.5px var(--line), 0 18px 30px -24px rgba(60,40,38,.4); }
+    .fc-fc-wrap .fc-fc-fact .fc-fc-pill { background:var(--green); color:#f7fef9 !important; }
+
+    .fc-fc-wrap .fc-fc-text { line-height:var(--lh); white-space:pre-line; overflow-wrap:anywhere; text-wrap:pretty; color:inherit !important; }
+    .fc-fc-wrap .fc-fc-claim .fc-fc-text { font-weight:780; letter-spacing:-.012em; }
+    .fc-fc-wrap .fc-fc-fact .fc-fc-text { font-weight:800; letter-spacing:-.015em; }
+    .fc-fc-wrap .fc-fc mark {
+        background:var(--v-hl) !important; color:inherit !important; padding:0 .14em; margin:0 -.14em;
+        border-radius:.14em; -webkit-box-decoration-break:clone; box-decoration-break:clone;
     }
 
-    /* RESULT, under a red rule */
-    .fc-cc-wrap .fc-cc-result { display:flex; align-items:center; gap:14px; flex-wrap:wrap; border-top:2px solid var(--fc-red); padding-top:16px; }
-    .fc-cc-wrap .fc-cc-result-pill {
-        background:var(--fc-red); color:#ffffff !important; font-weight:700; font-size:16px;
-        letter-spacing:0.5px; text-transform:uppercase; padding:7px 24px; border-radius:999px; line-height:1.2;
-    }
-    .fc-cc-wrap .fc-cc-result-text { font-weight:700; font-size:19px; text-transform:uppercase; color:var(--fc-ink) !important; letter-spacing:0.3px; line-height:1.2; }
+    /* Hindi, Marathi and other scripts: no tight letter spacing */
+    .fc-fc-wrap .fc-fc--indic .fc-fc-text,
+    .fc-fc-wrap .fc-fc--indic .fc-fc-pill,
+    .fc-fc-wrap .fc-fc--indic .fc-fc-rating-label { letter-spacing:0; }
+    .fc-fc-wrap .fc-fc.fc-fc--indic .fc-fc-pill { font-size:18px; padding-top:3px !important; }
+    .fc-fc-wrap .fc-fc--indic .fc-fc-rating-label { font-size:14px; }
 
-    /* WhatsApp */
-    .fc-cc-wrap .fc-cc-wa { display:inline-flex; flex-direction:column; align-items:flex-start; gap:6px; align-self:flex-start; }
-    .fc-cc-wrap .fc-cc-wa-pill {
-        display:inline-flex; align-items:center; gap:8px; background:var(--fc-red); color:#ffffff !important;
-        font-weight:600; font-size:13px; padding:4px 14px 4px 4px; border-radius:999px; line-height:1.2;
-    }
-    .fc-cc-wrap .fc-cc-wa-icon { width:22px; height:22px; flex:0 0 22px; display:block; }
-    .fc-cc-wrap .fc-cc-wa-num { font-weight:700; font-size:20px; color:var(--fc-ink) !important; letter-spacing:0.3px; line-height:1.2; }
-    .fc-cc-wrap a.fc-cc-wa:hover .fc-cc-wa-pill, .fc-cc-wrap a.fc-cc-wa:focus-visible .fc-cc-wa-pill { background:#c8141b; }
-    .fc-cc-wrap a.fc-cc-wa:focus-visible { outline:3px solid var(--fc-green); outline-offset:4px; border-radius:8px; }
+    /* Text sizes by length, 1 (short) to 4 (long) */
+    .fc-fc-wrap .fc-fc-claim.fc-s1 .fc-fc-text { font-size:21px; }
+    .fc-fc-wrap .fc-fc-claim.fc-s2 .fc-fc-text { font-size:18px; }
+    .fc-fc-wrap .fc-fc-claim.fc-s3 .fc-fc-text { font-size:16px; }
+    .fc-fc-wrap .fc-fc-claim.fc-s4 .fc-fc-text { font-size:15px; }
+    .fc-fc-wrap .fc-fc-fact.fc-s1 .fc-fc-text  { font-size:23px; }
+    .fc-fc-wrap .fc-fc-fact.fc-s2 .fc-fc-text  { font-size:19px; }
+    .fc-fc-wrap .fc-fc-fact.fc-s3 .fc-fc-text  { font-size:17px; }
+    .fc-fc-wrap .fc-fc-fact.fc-s4 .fc-fc-text  { font-size:15.5px; }
 
-    /* Wide card: the thumbnail's two-column layout */
+    /* Wide card: two columns, as in the design */
     @container (min-width: 600px) {
-        .fc-cc-wrap .fc-cc { flex-direction:row; align-items:stretch; gap:28px; padding:26px 28px; }
-        .fc-cc-wrap .fc-cc-left  { display:flex; flex-direction:column; gap:18px; flex:0 0 44%; min-width:0; }
-        .fc-cc-wrap .fc-cc-right { display:flex; flex-direction:column; gap:26px; flex:1 1 auto; min-width:0; padding-top:14px; }
-        .fc-cc-wrap .fc-cc-box { flex:1 1 0; margin-top:0; padding:36px 22px 20px; }
-        .fc-cc-wrap .fc-cc-text { font-size:16.5px; }
-        .fc-cc-wrap .fc-cc-wa { order:5; }
-        .fc-cc-wrap .fc-cc-result { order:6; margin-top:auto; }
+        .fc-fc-wrap .fc-fc { display:grid; grid-template-columns:45% 1fr; gap:26px; padding:26px; border-radius:24px; }
+        .fc-fc-wrap .fc-fc-col-a .fc-fc-rating { flex:1 1 auto; min-height:88px; padding:12px 22px; }
+        .fc-fc-wrap .fc-fc-col-b { gap:0; }
+        .fc-fc-wrap .fc-fc-claim { flex:.62 1 auto; }
+        .fc-fc-wrap .fc-fc-fact  { flex:1 1 auto; margin-top:30px !important; }
+        .fc-fc-wrap .fc-fc-rating-value { font-size:28px; }
+        .fc-fc-wrap .fc-fc-claim.fc-s1 .fc-fc-text { font-size:23px; }
+        .fc-fc-wrap .fc-fc-fact.fc-s1 .fc-fc-text  { font-size:26px; }
+        .fc-fc-wrap .fc-fc-fact.fc-s2 .fc-fc-text  { font-size:21px; }
     }
-    /* Very narrow card (small phones) */
-    @container (max-width: 360px) {
-        .fc-cc-wrap .fc-cc { padding:18px 14px; }
-        .fc-cc-wrap .fc-cc-tab { font-size:22px; padding:5px 18px 4px; }
-        .fc-cc-wrap .fc-cc-text { font-size:14.5px; }
-        .fc-cc-wrap .fc-cc-result-text { font-size:17px; }
+    /* Small phones */
+    @container (max-width: 359px) {
+        .fc-fc-wrap .fc-fc { padding:14px 12px 16px; }
+        .fc-fc-wrap .fc-fc-box { padding:28px 16px 16px !important; }
+        .fc-fc-wrap .fc-fc-rating-value { font-size:22px; }
+        .fc-fc-wrap .fc-fc-claim.fc-s1 .fc-fc-text { font-size:19px; }
+        .fc-fc-wrap .fc-fc-fact.fc-s1 .fc-fc-text  { font-size:20px; }
     }
     </style>
 
-    <div class="fc-cc-wrap">
-    <aside class="fc-cc" aria-label="<?php echo esc_attr( 'Fact check summary' ); ?>">
+    <div class="fc-fc-wrap">
+    <aside class="<?php echo esc_attr( $classes ); ?>" aria-label="<?php echo esc_attr( $words['fact'] ); ?>">
 
-        <div class="fc-cc-left">
-            <div class="fc-cc-logo">
-                <?php if ( $logo_url !== '' ) : ?>
-                <img src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>" loading="eager" decoding="async">
-                <?php else : ?>
-                <span class="fc-cc-sitename"><?php echo esc_html( get_bloginfo( 'name' ) ); ?></span>
-                <?php endif; ?>
-            </div>
+        <div class="fc-fc-col fc-fc-col-a">
+            <?php if ( $logo_url !== '' ) : ?>
+            <img class="fc-fc-logo" src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>" decoding="async">
+            <?php else : ?>
+            <p class="fc-fc-site"><?php echo esc_html( get_bloginfo( 'name' ) ); ?></p>
+            <?php endif; ?>
 
             <?php if ( $img_html !== '' ) : ?>
-            <figure class="fc-cc-photo">
+            <figure class="fc-fc-photo" style="aspect-ratio:<?php echo esc_attr( round( $ratio, 3 ) ); ?>">
                 <?php echo $img_html; // Built and escaped by WordPress. ?>
-                <?php if ( $stamp_url ) : ?>
-                <img class="fc-cc-stamp" src="<?php echo esc_url( $stamp_url ); ?>" alt="<?php echo esc_attr( $rating_label ); ?>" width="96" height="96" decoding="async">
-                <?php endif; ?>
             </figure>
             <?php endif; ?>
 
-            <?php if ( $site['whatsapp_url'] !== '' && $site['whatsapp_number'] !== '' ) : ?>
-            <a class="fc-cc-wa" href="<?php echo esc_url( $site['whatsapp_url'] ); ?>" target="_blank" rel="noopener noreferrer">
-                <span class="fc-cc-wa-pill">
-                    <svg class="fc-cc-wa-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><circle cx="16" cy="16" r="16" fill="#25d366"/><path fill="#fff" d="M16 6.5a9.5 9.5 0 0 0-8.2 14.3L6.5 25.5l4.8-1.3A9.5 9.5 0 1 0 16 6.5zm0 17.3a7.8 7.8 0 0 1-4-1.1l-.3-.2-2.8.8.8-2.7-.2-.3A7.8 7.8 0 1 1 16 23.8zm4.3-5.8c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.4 6.4 0 0 1-3.2-2.8c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.7-1.7c-.2-.5-.4-.4-.5-.4h-.5a.9.9 0 0 0-.7.3 2.8 2.8 0 0 0-.9 2.1 4.9 4.9 0 0 0 1 2.6 11.2 11.2 0 0 0 4.3 3.8c1.6.7 2.2.7 3 .6a2.6 2.6 0 0 0 1.7-1.2 2.1 2.1 0 0 0 .1-1.2c0-.1-.2-.2-.4-.3z"/></svg>
-                    <?php echo esc_html( $words['whatsapp'] ); ?>
-                </span>
-                <span class="fc-cc-wa-num"><?php echo esc_html( $site['whatsapp_number'] ); ?></span>
-            </a>
-            <?php endif; ?>
-
             <?php if ( $rating_label !== '' ) : ?>
-            <div class="fc-cc-result">
-                <span class="fc-cc-result-pill"><?php echo esc_html( $words['result'] ); ?></span>
-                <span class="fc-cc-result-text"><?php echo esc_html( $rating_label ); ?></span>
+            <div class="fc-fc-rating">
+                <p class="fc-fc-rating-label"><?php echo esc_html( $words['rating'] ); ?></p>
+                <p class="fc-fc-rating-value">
+                    <span class="fc-fc-badge" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><?php echo fc_card_glyph( $rating ); // Fixed markup. ?></svg></span>
+                    <span><?php echo esc_html( $rating_label ); ?></span>
+                </p>
             </div>
             <?php endif; ?>
         </div>
 
-        <div class="fc-cc-right">
+        <div class="fc-fc-col fc-fc-col-b">
             <?php if ( $claim !== '' ) : ?>
-            <div class="fc-cc-box fc-cc-claim">
-                <span class="fc-cc-tab"><?php echo esc_html( $words['claim'] ); ?></span>
-                <div class="fc-cc-text"><?php echo esc_html( $claim ); ?></div>
+            <div class="fc-fc-box fc-fc-claim fc-s<?php echo (int) fc_card_size( $claim ); ?>">
+                <p class="fc-fc-pill"><?php echo esc_html( $words['claim'] ); ?></p>
+                <p class="fc-fc-text">&ldquo;<?php echo esc_html( $claim ); ?>&rdquo;</p>
             </div>
             <?php endif; ?>
 
             <?php if ( $fact !== '' ) : ?>
-            <div class="fc-cc-box fc-cc-fact">
-                <span class="fc-cc-tab"><?php echo esc_html( $words['fact'] ); ?></span>
-                <div class="fc-cc-text"><?php echo esc_html( $fact ); ?></div>
+            <div class="fc-fc-box fc-fc-fact fc-s<?php echo (int) fc_card_size( fc_plain_fact( $fact ) ); ?>">
+                <p class="fc-fc-pill"><?php echo esc_html( $words['fact'] ); ?></p>
+                <p class="fc-fc-text"><?php echo $fact_html; // Escaped above; only <mark> added. ?></p>
             </div>
             <?php endif; ?>
         </div>
