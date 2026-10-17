@@ -280,6 +280,7 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
     $indic    = fc_card_is_indic( $claim . $fact . $rating_label . implode( '', $words ) );
     $classes  = 'fc-fc' . ( $indic ? ' fc-fc--indic' : '' );
     $fonts    = FC_PUBLISHER_URL . 'assets/fonts/';
+    $size     = max( fc_card_size( $claim ), fc_card_size( fc_plain_fact( $fact ) ) ); // One size for both boxes.
 
     // Escaped first; then **words** become a highlight.
     $fact_html = preg_replace( '/\*\*(.+?)\*\*/s', '<mark>$1</mark>', esc_html( $fact ) );
@@ -295,13 +296,13 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
 
     .fc-fc-wrap { container-type:inline-size; margin:0 0 30px; color-scheme:light; }
     .fc-fc-wrap .fc-fc {
-        --red:#ed1c24; --ink:#111; --paper:#f2f2f2; --lh:1.3;
+        --red:#ed1c24; --ink:#111; --paper:#f2f2f2; --lh:1.38;
         display:flex; flex-direction:column; gap:20px;
         background:var(--paper) !important; color:var(--ink) !important;
         border-radius:20px; padding:16px; text-align:left;
         font-family:'FC Archivo','FC Devanagari',system-ui,-apple-system,'Segoe UI',sans-serif;
     }
-    .fc-fc-wrap .fc-fc--indic { --lh:1.5; }
+    .fc-fc-wrap .fc-fc--indic { --lh:1.55; }
 
     /* Keep the theme's article styles out of the card */
     .fc-fc-wrap .fc-fc, .fc-fc-wrap .fc-fc * { box-sizing:border-box; }
@@ -322,19 +323,19 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
         position:absolute; inset:0; display:block; width:100% !important; height:100% !important;
         max-width:none !important; max-height:none !important; object-fit:cover;
     }
-    .fc-fc-wrap .fc-fc-photo .fc-fc-stamp { position:absolute; left:2.5%; bottom:3%; width:24% !important; height:auto !important; filter:drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
-    .fc-fc-wrap .fc-fc-photo .fc-fc-stamp--wide { width:34% !important; }
+    .fc-fc-wrap .fc-fc-photo .fc-fc-stamp { position:absolute; left:2.5%; bottom:3%; width:29% !important; height:auto !important; filter:drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
+    .fc-fc-wrap .fc-fc-photo .fc-fc-stamp--wide { width:38% !important; }
 
     /* WhatsApp number and "Follow us" */
     .fc-fc-wrap .fc-fc-contact { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
     .fc-fc-wrap .fc-fc-wa, .fc-fc-wrap .fc-fc-follow { display:flex; flex-direction:column; gap:6px; min-width:0; }
     .fc-fc-wrap .fc-fc-follow { align-items:center; }
-    .fc-fc-wrap .fc-fc-tag {
+    .fc-fc-wrap .fc-fc .fc-fc-tag {
         display:inline-flex; align-items:center; gap:6px; align-self:flex-start; padding:3px 12px !important; border-radius:999px;
         background:var(--red); color:#fff !important; font-size:14px; font-weight:700; line-height:1.25; white-space:nowrap;
     }
-    .fc-fc-wrap .fc-fc-follow .fc-fc-tag { align-self:center; }
-    .fc-fc-wrap .fc-fc-tag svg { width:1.5em; height:1.5em; margin:-.3em 0 -.3em -.6em; flex:none; }
+    .fc-fc-wrap .fc-fc .fc-fc-follow .fc-fc-tag { align-self:center; }
+    .fc-fc-wrap .fc-fc .fc-fc-tag svg { width:1.5em; height:1.5em; margin:-.3em 0 -.3em -.6em; flex:none; }
     .fc-fc-wrap .fc-fc-num { font-size:24px; font-weight:800; letter-spacing:.01em; line-height:1.1; color:var(--ink) !important; white-space:nowrap; }
     .fc-fc-wrap .fc-fc-socs { display:flex; gap:6px; }
     .fc-fc-wrap .fc-fc-soc { display:block; width:24px; height:24px; }
@@ -342,11 +343,11 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
 
     /* RESULT strip */
     .fc-fc-wrap .fc-fc-result { display:flex; align-items:center; gap:16px; padding-top:12px; border-top:3px solid var(--red); }
-    .fc-fc-wrap .fc-fc-result-pill {
-        flex:none; padding:5px 22px !important; border-radius:999px; background:var(--red); color:#fff !important;
-        font-size:22px; font-weight:800; line-height:1.15; letter-spacing:.02em; text-transform:uppercase;
+    .fc-fc-wrap .fc-fc .fc-fc-result-pill {
+        flex:none; padding:5px 20px !important; border-radius:999px; background:var(--red); color:#fff !important;
+        font-size:19px; font-weight:800; line-height:1.15; letter-spacing:.02em; text-transform:uppercase; white-space:nowrap;
     }
-    .fc-fc-wrap .fc-fc-result-text { font-size:22px; font-weight:800; line-height:1.15; text-transform:uppercase; color:var(--ink) !important; overflow-wrap:anywhere; }
+    .fc-fc-wrap .fc-fc-result-text { font-size:21px; font-weight:800; line-height:1.15; text-transform:uppercase; color:var(--ink) !important; overflow-wrap:anywhere; }
 
     /* CLAIM and FACT CHECK boxes, each with a pill on its top edge */
     .fc-fc-wrap .fc-fc-boxes { gap:34px; padding-top:18px; }
@@ -361,7 +362,7 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
         box-shadow:0 4px 10px -2px rgba(0,0,0,.3);
     }
     .fc-fc-wrap .fc-fc-fact .fc-fc-pill { background:linear-gradient(180deg,#14a85b,#007a3d); }
-    .fc-fc-wrap .fc-fc-text { line-height:var(--lh); white-space:pre-line; overflow-wrap:anywhere; text-wrap:pretty; font-weight:800; letter-spacing:-.005em; color:#fff !important; }
+    .fc-fc-wrap .fc-fc-text { line-height:var(--lh); white-space:pre-line; overflow-wrap:anywhere; text-wrap:pretty; font-weight:700; letter-spacing:0; color:#fff !important; }
     .fc-fc-wrap .fc-fc mark {
         background:rgba(255,255,255,.26) !important; color:inherit !important; padding:0 .14em; margin:0 -.14em;
         border-radius:.14em; -webkit-box-decoration-break:clone; box-decoration-break:clone;
@@ -379,21 +380,21 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
     .fc-fc-wrap .fc-s4 .fc-fc-text { font-size:15.5px; }
 
     /* Wide card: two columns, as in the design. Everything scales with the card's width. */
-    @container (min-width: 680px) {
-        .fc-fc-wrap .fc-fc { display:grid; grid-template-columns:42% 1fr; grid-template-areas:"head boxes" "foot boxes"; align-items:stretch; column-gap:4cqi; row-gap:2.6cqi; padding:3.4cqi; border-radius:26px; }
-        .fc-fc-wrap .fc-fc-head { grid-area:head; gap:2cqi; }
+    @container (min-width: 540px) {
+        .fc-fc-wrap .fc-fc { display:grid; grid-template-columns:42% 1fr; grid-template-rows:1fr auto; grid-template-areas:"head boxes" "foot boxes"; align-items:stretch; column-gap:4cqi; row-gap:2.6cqi; padding:3.4cqi; border-radius:26px; }
+        .fc-fc-wrap .fc-fc-head { grid-area:head; gap:2cqi; justify-content:center; }
         .fc-fc-wrap .fc-fc-boxes { grid-area:boxes; gap:5.2cqi; padding-top:2.4cqi; }
         .fc-fc-wrap .fc-fc-foot { grid-area:foot; align-self:end; }
-        .fc-fc-wrap .fc-fc-box { flex:1 1 0; padding:5.4cqi 3.4cqi 3cqi !important; border-radius:20px; }
-        .fc-fc-wrap .fc-fc .fc-fc-pill { top:-3cqi; left:3.4cqi; height:5.6cqi; padding:0 4cqi !important; font-size:3.8cqi; border-width:4px; }
-        .fc-fc-wrap .fc-fc--indic .fc-fc-pill { font-size:3.4cqi; }
+        .fc-fc-wrap .fc-fc-box { flex:1 1 auto; padding:5.6cqi 3.4cqi 3.4cqi !important; border-radius:20px; }
+        .fc-fc-wrap .fc-fc .fc-fc-pill { top:-3cqi; left:3.4cqi; height:5.6cqi; padding:0 4cqi !important; font-size:max(16px,3.4cqi); border-width:4px; }
+        .fc-fc-wrap .fc-fc--indic .fc-fc-pill { font-size:max(15px,3.1cqi); }
         .fc-fc-wrap .fc-fc-logo { height:7.4cqi !important; }
-        .fc-fc-wrap .fc-fc-tag { font-size:2cqi; padding:.3cqi 1.8cqi !important; }
-        .fc-fc-wrap .fc-fc-num { font-size:3.5cqi; }
+        .fc-fc-wrap .fc-fc .fc-fc-tag { font-size:max(12px,2cqi); padding:.3cqi 1.8cqi !important; }
+        .fc-fc-wrap .fc-fc-num { font-size:max(18px,3.3cqi); }
         .fc-fc-wrap .fc-fc-soc { width:3.3cqi; height:3.3cqi; }
         .fc-fc-wrap .fc-fc-result { gap:2cqi; padding-top:1.4cqi; }
-        .fc-fc-wrap .fc-fc-result-pill, .fc-fc-wrap .fc-fc-result-text { font-size:3.6cqi; }
-        .fc-fc-wrap .fc-fc-result-pill { padding:.5cqi 3.4cqi !important; }
+        .fc-fc-wrap .fc-fc-result-pill, .fc-fc-wrap .fc-fc-result-text { font-size:max(16px,3cqi); }
+        .fc-fc-wrap .fc-fc .fc-fc-result-pill { padding:.5cqi 3cqi !important; }
         .fc-fc-wrap .fc-s1 .fc-fc-text { font-size:max(18px,3.1cqi); }
         .fc-fc-wrap .fc-s2 .fc-fc-text { font-size:max(16px,2.65cqi); }
         .fc-fc-wrap .fc-s3 .fc-fc-text { font-size:max(15px,2.35cqi); }
@@ -405,7 +406,7 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
         .fc-fc-wrap .fc-fc-box { padding:32px 16px 18px !important; }
         .fc-fc-wrap .fc-fc .fc-fc-pill { padding:0 20px !important; font-size:19px; }
         .fc-fc-wrap .fc-fc-num { font-size:20px; }
-        .fc-fc-wrap .fc-fc-result-pill, .fc-fc-wrap .fc-fc-result-text { font-size:18px; }
+        .fc-fc-wrap .fc-fc-result-pill, .fc-fc-wrap .fc-fc-result-text { font-size:17px; }
         .fc-fc-wrap .fc-s1 .fc-fc-text { font-size:19px; }
     }
     </style>
@@ -432,14 +433,14 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
 
         <div class="fc-fc-boxes">
             <?php if ( $claim !== '' ) : ?>
-            <div class="fc-fc-box fc-fc-claim fc-s<?php echo (int) fc_card_size( $claim ); ?>">
+            <div class="fc-fc-box fc-fc-claim fc-s<?php echo (int) $size; ?>">
                 <p class="fc-fc-pill"><?php echo esc_html( $words['claim'] ); ?></p>
                 <p class="fc-fc-text"><?php echo esc_html( $claim ); ?></p>
             </div>
             <?php endif; ?>
 
             <?php if ( $fact !== '' ) : ?>
-            <div class="fc-fc-box fc-fc-fact fc-s<?php echo (int) fc_card_size( fc_plain_fact( $fact ) ); ?>">
+            <div class="fc-fc-box fc-fc-fact fc-s<?php echo (int) $size; ?>">
                 <p class="fc-fc-pill"><?php echo esc_html( $words['fact'] ); ?></p>
                 <p class="fc-fc-text"><?php echo $fact_html; // Escaped above; only <mark> added. ?></p>
             </div>
