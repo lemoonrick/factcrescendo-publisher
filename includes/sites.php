@@ -21,6 +21,11 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  *                  "Listen to this article" player appears (English only).
  *  whatsapp_url    Where the WhatsApp banner links to.
  *  whatsapp_number The number as printed on the banner.
+ *  card_number     The number as printed on the fact card (optional; the
+ *                  banner's number is used when this is empty).
+ *  socials         Optional links for the card's "Follow us" icons, e.g.
+ *                  [ 'facebook' => 'https://…', 'instagram' => '…', 'x' => '…' ].
+ *                  An icon with no link is shown without one.
  *  join_language   The language readers type to join the broadcast list.
  *                  Empty means the site has no broadcast list.
  *  banner_image    The old picture banner, kept for sites that prefer it.
@@ -30,7 +35,7 @@ function fc_site_profiles() {
     $india_whatsapp = 'https://api.whatsapp.com/send?phone=919049053770&text=Please%20type%20your%20Name%20and%20Language:%20';
     $sl_whatsapp    = 'https://api.whatsapp.com/send?phone=94771514696&text=Please%20send%20your%20query:%20';
 
-    $india = [ 'whatsapp_url' => $india_whatsapp, 'whatsapp_number' => '+91 90490 53770' ];
+    $india = [ 'whatsapp_url' => $india_whatsapp, 'whatsapp_number' => '+91 90490 53770', 'card_number' => '9049053770' ];
     $sl    = [ 'whatsapp_url' => $sl_whatsapp,    'whatsapp_number' => '+94 77 151 4696', 'join_language' => '' ];
 
     $profiles = [
@@ -130,6 +135,8 @@ function fc_site_profile() {
         'lang'            => '',
         'whatsapp_url'    => '',
         'whatsapp_number' => '',
+        'card_number'     => '',
+        'socials'         => [],
         'join_language'   => '',
         'banner_image'    => '',
     ], is_array( $profile ) ? $profile : [] );
