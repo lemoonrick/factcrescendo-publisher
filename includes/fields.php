@@ -54,19 +54,31 @@ function fc_field_definitions() {
 function fc_card_mode_choices() {
     return [
         ''      => 'Site default',
-        'card'  => 'Built-in card',
-        'image' => 'My own picture (e.g. from Canva)',
+        'card'  => 'Fact Crescendo card',
+        'image' => 'My own picture (Canva)',
         'off'   => 'No card',
     ];
+}
+
+/**
+ * The card choices as editors see them. The first is the site's usual card,
+ * named plainly, so the same card is never listed twice.
+ */
+function fc_card_mode_options() {
+    $modes = fc_card_mode_choices();
+    $site  = fc_card_design();
+    $usual = [ 'card' => 'Fact Crescendo card', 'simple' => 'Simple card', 'off' => 'No card' ];
+    unset( $modes[''], $modes[ $site ] );
+    return [ '' => $usual[ $site ] . ' (usual)' ] + $modes;
 }
 
 /** Featured image stamp choices. Empty means "decide from the rating". */
 function fc_featured_badge_choices() {
     return [
-        ''             => 'Automatic (from the rating)',
+        ''             => 'Automatic',
         'fact-checked' => 'Fact checked stamp',
         'insight'      => 'Insight badge',
-        'none'         => 'No stamp (plain, or my own Canva image)',
+        'none'         => 'No stamp (I made my own)',
     ];
 }
 
@@ -233,7 +245,7 @@ function fc_render_fields_box( $post ) {
             <div class="fc-f">
                 <label class="fc-l" for="fc_card_mode">Fact card</label>
                 <select id="fc_card_mode" name="fc_card_mode">
-                    <?php foreach ( fc_card_mode_choices() as $value => $label ) : ?>
+                    <?php foreach ( fc_card_mode_options() as $value => $label ) : ?>
                     <option value="<?php echo esc_attr( $value ); ?>" <?php selected( $card_mode, $value ); ?>><?php echo esc_html( $label ); ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -358,9 +370,9 @@ function fc_render_image_picker( $name, $id ) {
 
 /** One line telling the editor what the stamp setting will do on this site. */
 function fc_featured_help_text() {
-    if ( ! fc_featured_enabled() ) return 'Stamping is switched off for this site (Settings → FactCrescendo).';
-    if ( ! fc_featured_can_draw() ) return 'This server cannot draw images (PHP GD is missing), so no stamp is added.';
-    return 'Set a plain photo as the featured image. The stamp is added when you save.';
+    if ( ! fc_featured_enabled() ) return 'Stamps are off for this site (Settings → Fact Crescendo).';
+    if ( ! fc_featured_can_draw() ) return 'This server can\'t add stamps. Ask your host to turn on PHP GD.';
+    return 'Use a plain photo as the featured image. The stamp is added when you save.';
 }
 
 
@@ -409,7 +421,7 @@ function fc_enqueue_editor_panel() {
         'fc-editor-panel',
         FC_PUBLISHER_URL . 'assets/editor-panel.js',
         [ 'wp-plugins', 'wp-element', 'wp-data', 'wp-components', 'wp-editor', 'wp-block-editor', 'wp-core-data' ],
-        FC_PUBLISHER_VERSION,
+        fc_asset_version( 'assets/editor-panel.js' ),
         true
     );
 
@@ -423,10 +435,8 @@ function fc_enqueue_editor_panel() {
         return $out;
     };
 
-    // "Site default" says what the default is, so nobody has to look it up.
-    $modes     = fc_card_mode_choices();
+    $modes     = fc_card_mode_options();
     $site_card = fc_card_design();
-    $modes['']  = 'Site default (' . ( $site_card === 'off' ? 'no card' : ( $site_card === 'simple' ? 'simple card' : 'built-in card' ) ) . ')';
 
     $post = get_post();
 

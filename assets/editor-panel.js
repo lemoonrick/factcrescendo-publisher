@@ -60,18 +60,18 @@
 
     /** What "Automatic" will do for this post's rating. */
     function autoStamp( m ) {
-        if ( settings.olderPost )       return 'no stamp (older post)';
-        if ( ! m.fc_rating )            return 'pick a rating first';
-        if ( m.fc_rating === 'news' )    return 'no stamp';
+        if ( settings.olderPost )        return 'none, older post';
+        if ( ! m.fc_rating )             return 'choose a rating first';
+        if ( m.fc_rating === 'news' )    return 'none for News';
         if ( m.fc_rating === 'insight' ) return 'Insight badge';
         return 'Fact checked stamp';
     }
 
     /** Short text under the claim and fact boxes: length, and a tip. */
     function lengthHelp( text, tip ) {
-        var n = String( text || '' ).trim().length;
+        var n = String( text || '' ).replace( /\*\*/g, '' ).trim().length; // stars aren't shown
         if ( ! n ) return tip;
-        return n + ' characters' + ( n > 140 ? ' — long; shorter reads better on the card.' : '.' ) + ' ' + tip;
+        return n + ' characters' + ( n > 140 ? ' (long; shorter reads better).' : '.' ) + ' ' + tip;
     }
 
     /** Pick an image from the media library; keeps only its ID. */
@@ -104,10 +104,11 @@
         );
     }
 
-    /** A small labelled group inside the panel, with a line between groups. */
-    function Group( title, children ) {
-        return el( 'div', { className: 'fc-group', style: { borderTop: '1px solid #e0e0e0', paddingTop: '16px', marginTop: '4px' } },
-            el( 'h3', { style: { fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', margin: '0 0 12px', color: '#1e1e1e' } }, title ),
+    /** A titled group with a line above it, so each part of the panel stands apart. */
+    function Group( title, help, children ) {
+        return el( 'div', { className: 'fc-group', style: { borderTop: '1px solid #e0e0e0', paddingTop: '20px' } },
+            el( 'h3', { style: { fontSize: '13px', fontWeight: 600, margin: '0 0 4px', color: '#1e1e1e' } }, title ),
+            help && el( 'p', { style: { fontSize: '12px', color: '#757575', margin: '0 0 12px', lineHeight: 1.5 } }, help ),
             el( C.Flex, { direction: 'column', gap: 4 }, children )
         );
     }
@@ -143,16 +144,23 @@
         var missing = active ? missingItems( f ) : [];
         var mode    = m.fc_card_mode || '';
         var shown   = mode || settings.siteCard; // what the card will actually be
+        var common  = { __nextHasNoMarginBottom: true };
 
-        var common = { __nextHasNoMarginBottom: true };
-        function select( props ) { return el( C.SelectControl, Object.assign( { __next40pxDefaultSize: true }, common, props ) ); }
+        function radios( key, options ) {
+            return el( C.RadioControl, Object.assign( {
+                key: key,
+                selected: m[ key ] || '',
+                options: options,
+                onChange: function ( v ) { f.set( key, v ); }
+            }, common ) );
+        }
 
         return el( SidePanel, { name: 'fc-fact-check', title: 'Fact Check', className: 'fc-fact-check-panel' },
-            el( C.Flex, { direction: 'column', gap: 4 },
+            el( C.Flex, { direction: 'column', gap: 6, style: { paddingTop: '4px', paddingBottom: '8px' } },
 
                 el( C.ToggleControl, Object.assign( {
                     label: 'This is a fact check',
-                    help: active ? null : 'Turn on to add the fact card, author box and WhatsApp banner.',
+                    help: active ? 'The card, stamp, author box and banner are made for you.' : 'Turn on to add the fact card, author box and WhatsApp banner.',
                     checked: active,
                     onChange: function ( v ) { f.set( 'fc_is_fact_check', v ); }
                 }, common ) ),
@@ -162,46 +170,40 @@
                 ),
 
                 // ── The facts
-                active && select( {
+                active && el( C.SelectControl, Object.assign( {
                     label: 'Rating',
                     value: m.fc_rating || '',
-                    options: [ { label: 'Choose a rating…', value: '' } ].concat( ratings ),
-                    onChange: function ( v ) { f.set( 'fc_rating', v ); }
-                } ),
+                    options: [ { label: 'Choose a rating', value: '' } ].concat( ratings ),
+                    onChange: function ( v ) { f.set( 'fc_rating', v ); },
+                    __next40pxDefaultSize: true
+                }, common ) ),
 
                 active && el( C.TextareaControl, Object.assign( {
                     label: 'Claim',
-                    placeholder: 'What is being said',
+                    placeholder: 'What people are saying',
                     help: lengthHelp( m.fc_claim, '' ),
                     value: m.fc_claim || '',
-                    rows: 3,
+                    rows: 4,
                     onChange: function ( v ) { f.set( 'fc_claim', v ); }
                 }, common ) ),
 
                 active && el( C.TextareaControl, Object.assign( {
                     label: 'Fact',
                     placeholder: 'What is actually true',
-                    help: lengthHelp( m.fc_fact, 'Put **two stars** around words to highlight them.' ),
+                    help: lengthHelp( m.fc_fact, 'Tip: put **two stars** around words to highlight them.' ),
                     value: m.fc_fact || '',
-                    rows: 4,
+                    rows: 6,
                     onChange: function ( v ) { f.set( 'fc_fact', v ); }
                 }, common ) ),
 
                 // ── Pictures
-                active && Group( 'Fact card', [
-                    select( {
-                        key: 'mode',
-                        label: 'Show',
-                        hideLabelFromVision: true,
-                        value: mode,
-                        options: settings.cardModes,
-                        onChange: function ( v ) { f.set( 'fc_card_mode', v ); }
-                    } ),
+                active && Group( 'Fact card', 'Shown at the top of the article.', [
+                    radios( 'fc_card_mode', settings.cardModes || [] ),
                     shown === 'image' && el( ImagePicker, {
                         key: 'image',
                         name: 'fc-card-image',
                         label: 'Your card picture',
-                        help: 'Shown as it is, in place of the built-in card.',
+                        help: 'Shown as it is.',
                         id: m.fc_card_image || 0,
                         onChange: function ( id ) { f.set( 'fc_card_image', id ); }
                     } ),
@@ -209,59 +211,49 @@
                         key: 'photo',
                         name: 'fc-card-photo',
                         label: 'Card photo (optional)',
-                        help: 'Leave empty to use the featured image without its stamp.',
+                        help: 'Empty = the featured image, without its stamp.',
                         id: m.fc_card_photo || 0,
                         onChange: function ( id ) { f.set( 'fc_card_photo', id ); }
                     } )
                 ] ),
 
-                active && Group( 'Featured image stamp', [
-                    select( {
-                        key: 'badge',
-                        label: 'Stamp',
-                        hideLabelFromVision: true,
-                        value: m.fc_featured_badge || '',
-                        options: ( settings.badges || [] ).map( function ( o ) {
-                            return o.value === '' ? { value: '', label: 'Automatic: ' + autoStamp( m ) } : o;
-                        } ),
-                        help: settings.featuredHelp,
-                        onChange: function ( v ) { f.set( 'fc_featured_badge', v ); }
-                    } )
+                active && Group( 'Featured image stamp', settings.featuredHelp, [
+                    radios( 'fc_featured_badge', ( settings.badges || [] ).map( function ( o ) {
+                        return o.value === '' ? { value: '', label: 'Automatic (' + autoStamp( m ) + ')' } : o;
+                    } ) )
                 ] ),
 
                 // ── For Google
-                active && el( C.PanelBody, {
-                        title: 'Claim source (for Google)',
-                        initialOpen: !! ( m.fc_claim_source_url || m.fc_claim_author ),
-                        className: 'fc-source'
-                    },
-                    el( C.Flex, { direction: 'column', gap: 4 },
-                        el( C.TextControl, Object.assign( {
-                            label: 'Link where it appeared',
-                            type: 'url',
-                            placeholder: 'https://',
-                            value: m.fc_claim_source_url || '',
-                            onChange: function ( v ) { f.set( 'fc_claim_source_url', v ); },
-                            __next40pxDefaultSize: true
-                        }, common ) ),
-                        el( C.TextControl, Object.assign( {
-                            label: 'Who said it',
-                            placeholder: 'e.g. viral WhatsApp forward, @username',
-                            value: m.fc_claim_author || '',
-                            onChange: function ( v ) { f.set( 'fc_claim_author', v ); },
-                            __next40pxDefaultSize: true
-                        }, common ) ),
-                        m.fc_claim_author && select( {
-                            label: 'That is a',
-                            value: m.fc_claim_author_type === 'Organization' ? 'Organization' : 'Person',
-                            options: [
-                                { label: 'Person or social media account', value: 'Person' },
-                                { label: 'Organisation, channel or publication', value: 'Organization' }
-                            ],
-                            onChange: function ( v ) { f.set( 'fc_claim_author_type', v ); }
-                        } )
-                    )
-                )
+                active && Group( 'Claim source', 'Optional. Helps Google show your fact check.', [
+                    el( C.TextControl, Object.assign( {
+                        key: 'url',
+                        label: 'Link to the claim',
+                        type: 'url',
+                        placeholder: 'https://',
+                        value: m.fc_claim_source_url || '',
+                        onChange: function ( v ) { f.set( 'fc_claim_source_url', v ); },
+                        __next40pxDefaultSize: true
+                    }, common ) ),
+                    el( C.TextControl, Object.assign( {
+                        key: 'who',
+                        label: 'Who said it',
+                        placeholder: 'e.g. a viral WhatsApp post',
+                        value: m.fc_claim_author || '',
+                        onChange: function ( v ) { f.set( 'fc_claim_author', v ); },
+                        __next40pxDefaultSize: true
+                    }, common ) ),
+                    m.fc_claim_author && el( C.SelectControl, Object.assign( {
+                        key: 'type',
+                        label: 'They are a',
+                        value: m.fc_claim_author_type === 'Organization' ? 'Organization' : 'Person',
+                        options: [
+                            { label: 'Person or social account', value: 'Person' },
+                            { label: 'Organisation or channel', value: 'Organization' }
+                        ],
+                        onChange: function ( v ) { f.set( 'fc_claim_author_type', v ); },
+                        __next40pxDefaultSize: true
+                    }, common ) )
+                ] )
             )
         );
     }

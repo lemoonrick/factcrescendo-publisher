@@ -196,7 +196,7 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
     .fc-hero .fc-hero-img,
     .fc-hero .fc-hero-logo { margin:0 !important; padding:0 !important; border-radius:0; }
     .fc-hero .fc-hero-strip { margin:0 !important; }
-    .fc-hero-logo { position:absolute; top:16px; left:16px; height:30px; width:auto; max-width:36%; object-fit:contain; filter:drop-shadow(0 1px 4px rgba(0,0,0,0.35)); }
+    .fc-hero .fc-hero-logo { position:absolute; top:18px; left:18px; height:46px !important; width:auto !important; max-width:48% !important; object-fit:contain; filter:drop-shadow(0 1px 6px rgba(0,0,0,0.55)); }
 
     .fc-hero-strip {
         background:#ffffff; border-radius:12px; overflow:hidden;
@@ -238,11 +238,11 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
         .fc-hero-text { font-size:13.5px; line-height:1.55; }
         .fc-hero-label { flex-basis:40px; font-size:10px; letter-spacing:0.7px; }
         .fc-hero-verdict { font-size:10px; padding:3px 8px; margin-right:8px; }
-        .fc-hero-logo { height:22px; top:11px; left:11px; }
+        .fc-hero .fc-hero-logo { height:32px !important; top:12px; left:12px; }
     }
     </style>
 
-    <div class="fc-hero">
+    <div class="fc-hero" data-fc-card>
 
         <?php if ( $has_img ) : ?>
         <figure class="fc-hero-media">
@@ -254,7 +254,7 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
             ?>
 
             <?php if ( $logo_url ) : ?>
-            <img src="<?php echo esc_url( $logo_url ); ?>" class="fc-hero-logo" alt="">
+            <img src="<?php echo esc_url( $logo_url ); ?>" class="fc-hero-logo" alt="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>">
             <?php endif; ?>
         </figure>
         <?php endif; ?>
@@ -308,7 +308,7 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
  */
 function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
     // Printed in the footer, after the player's markup exists.
-    wp_enqueue_script( 'fc-audio-player', FC_PUBLISHER_URL . 'assets/audio-player.js', [], FC_PUBLISHER_VERSION, true );
+    wp_enqueue_script( 'fc-audio-player', FC_PUBLISHER_URL . 'assets/audio-player.js', [], fc_asset_version( 'assets/audio-player.js' ), true );
 
     $player_id = 'fc-a-' . $post_id;
     $body_id   = 'fc-article-body-' . $post_id;
@@ -455,33 +455,41 @@ function fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_
 
 // ── WHATSAPP BANNER ────────────────────────────────────────────────────────
 /**
- * The banner at the end of the article.
- *
- * Built from this site's entry in the site list (sites.php), so nothing is
- * pasted anywhere. Two exceptions:
- *  - Banner HTML pasted under Settings is used instead, until cleared.
- *  - An article with a WhatsApp link already written into it (older posts,
- *    where editors pasted the banner by hand) gets no second one.
- *
- * Settings choose the new banner (default), the old picture, or none.
+ * The banner at the end of the article. Settings choose which one:
+ *   card   – the new banner, with this site's number (default)
+ *   image  – the old picture banner
+ *   custom – banner HTML pasted under Settings
+ *   off    – no banner
+ * An article with a WhatsApp link already in it (older posts, where the
+ * banner was pasted by hand) gets no second one.
  */
+function fc_whatsapp_banner_choice() {
+    $choice = (string) get_option( 'fc_whatsapp_banner_style', '' );
+    if ( $choice === '' ) {
+        // Not chosen yet: keep the old on/off switch working.
+        return get_option( 'fc_show_whatsapp_banner', '1' ) === '0' ? 'off' : 'card';
+    }
+    return in_array( $choice, [ 'card', 'image', 'custom', 'off' ], true ) ? $choice : 'card';
+}
+
 function fc_get_whatsapp_banner( $content = '' ) {
-    if ( get_option( 'fc_show_whatsapp_banner', '1' ) !== '1' ) return '';
+    $choice = fc_whatsapp_banner_choice();
+    if ( $choice === 'off' ) return '';
 
     if ( preg_match( '#api\.whatsapp\.com/send|wa\.me/#i', (string) $content ) ) return '';
 
-    // Pasted banners carry their own colours; color-scheme:light stops dark
-    // themes turning their text white.
-    $pasted = (string) get_option( 'fc_whatsapp_banner_html', '' );
-    if ( trim( $pasted ) !== '' ) {
-        // Already cleaned against an allowlist when it was saved.
-        return '<div class="fc-whatsapp-banner" style="margin:16px 0; color-scheme:light;">' . $pasted . '</div>';
+    if ( $choice === 'custom' ) {
+        $pasted = trim( (string) get_option( 'fc_whatsapp_banner_html', '' ) );
+        if ( $pasted === '' ) return '';
+        // Cleaned against an allowlist when saved. color-scheme:light stops
+        // dark themes turning its text white.
+        return '<div class="fc-whatsapp-banner" style="margin:28px 0; color-scheme:light;">' . $pasted . '</div>';
     }
 
     $site = fc_site_profile();
     if ( $site['whatsapp_url'] === '' ) return '';
 
-    if ( get_option( 'fc_whatsapp_banner_style', 'card' ) === 'image' ) {
+    if ( $choice === 'image' ) {
         if ( $site['banner_image'] === '' ) return '';
         return '<figure class="fc-whatsapp-banner" style="margin:28px 0;">'
             . '<a href="' . esc_url( $site['whatsapp_url'] ) . '" target="_blank" rel="noopener noreferrer">'

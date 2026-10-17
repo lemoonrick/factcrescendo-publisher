@@ -31,7 +31,7 @@ function fc_card_mode( $post_id ) {
         // No picture chosen yet: fall back to the site default, never a blank.
         return fc_attachment_image_id( fc_meta( 'fc_card_image', $post_id ) ) ? 'image' : fc_card_design();
     }
-    if ( $mode === 'card' ) return fc_card_design() === 'simple' ? 'simple' : 'card';
+    if ( $mode === 'card' ) return 'card';
 
     return fc_card_design();
 }
@@ -68,6 +68,12 @@ function fc_card_logo_url() {
     return (string) apply_filters( 'fc_card_logo_url', $url );
 }
 
+/** The white logo, for the simple card where it sits on the photo. */
+function fc_card_logo_white_url() {
+    /** Filter: use another white logo. Return '' for none. */
+    return (string) apply_filters( 'fc_card_logo_white_url', FC_PUBLISHER_URL . 'assets/logo-white.png' );
+}
+
 /** The fact without its **highlight** marks, for plain-text uses. */
 function fc_plain_fact( $text ) {
     return preg_replace( '/\*\*(.+?)\*\*/s', '$1', (string) $text );
@@ -76,14 +82,14 @@ function fc_plain_fact( $text ) {
 /** The card's headings, in the site's language. */
 function fc_card_labels( $post_id ) {
     $words = [
-        'en' => [ 'claim' => 'Claim', 'fact' => 'Fact check', 'rating' => 'Rating' ],
-        'hi' => [ 'claim' => 'दावा', 'fact' => 'फैक्ट चेक', 'rating' => 'रेटिंग' ],
-        'mr' => [ 'claim' => 'दावा', 'fact' => 'फॅक्ट चेक', 'rating' => 'रेटिंग' ],
+        'en' => [ 'claim' => 'Claim', 'fact' => 'Fact check', 'rating' => 'Rating', 'download' => 'Download', 'share' => 'Share' ],
+        'hi' => [ 'claim' => 'दावा', 'fact' => 'फैक्ट चेक', 'rating' => 'रेटिंग', 'download' => 'डाउनलोड', 'share' => 'शेयर' ],
+        'mr' => [ 'claim' => 'दावा', 'fact' => 'फॅक्ट चेक', 'rating' => 'रेटिंग', 'download' => 'डाउनलोड', 'share' => 'शेअर' ],
     ];
     $lang = fc_site_lang();
 
-    /** Filter: change the headings. Keys: claim, fact, rating. */
-    return apply_filters( 'fc_card_labels', $words[ $lang ] ?? $words['en'], $post_id );
+    /** Filter: change the words. Keys: claim, fact, rating, download, share. */
+    return array_merge( $words['en'], (array) apply_filters( 'fc_card_labels', $words[ $lang ] ?? $words['en'], $post_id ) );
 }
 
 /** Colour family for a rating: red, orange, amber or green. */
@@ -138,12 +144,60 @@ function fc_render_fact_card( $post_id, $rating, $rating_label, $claim, $fact ) 
         case 'off':
             return '';
         case 'image':
-            return fc_build_card_image( $post_id, $rating_label, $claim );
+            $card = fc_build_card_image( $post_id, $rating_label, $claim );
+            break;
         case 'simple':
-            return fc_build_fact_card( $post_id, $rating, $rating_label, $claim, fc_plain_fact( $fact ), get_option( 'fc_logo_url', '' ) );
+            $card = fc_build_fact_card( $post_id, $rating, $rating_label, $claim, fc_plain_fact( $fact ), fc_card_logo_white_url() );
+            break;
         default:
-            return fc_build_card( $post_id, $rating, $rating_label, $claim, $fact );
+            $card = fc_build_card( $post_id, $rating, $rating_label, $claim, $fact );
     }
+    if ( $card === '' ) return '';
+
+    return '<div class="fc-card-block">' . $card . fc_card_share_buttons( $post_id ) . '</div>';
+}
+
+/** "fact-check-<post-slug>", without saying "fact-check" twice. */
+function fc_card_file_name( $post_id ) {
+    $slug = (string) get_post_field( 'post_name', $post_id );
+    return strpos( $slug, 'fact-check' ) === 0 ? $slug : 'fact-check-' . $slug;
+}
+
+/** Small Download and Share buttons under the card. Hidden until their script runs. */
+function fc_card_share_buttons( $post_id ) {
+    if ( get_option( 'fc_card_share', '1' ) !== '1' ) return '';
+
+    wp_enqueue_script( 'fc-card-share', FC_PUBLISHER_URL . 'assets/card-share.js', [], fc_asset_version( 'assets/card-share.js' ), true );
+    wp_add_inline_script( 'fc-card-share', 'window.fcShare = ' . wp_json_encode( [
+        'lib' => FC_PUBLISHER_URL . 'assets/vendor/modern-screenshot.js?ver=4.7.0',
+    ] ) . ';', 'before' );
+
+    $words = fc_card_labels( $post_id );
+    $down  = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>';
+    $share = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M6 12v7h12v-7"/></svg>';
+
+    ob_start();
+    ?>
+    <style>
+    .fc-card-block .fc-fc-wrap, .fc-card-block .fc-hero, .fc-card-block .fc-own-card { margin-bottom:10px !important; }
+    .fc-share { display:flex; gap:8px; justify-content:flex-end; margin:0 0 28px; }
+    .fc-share[hidden] { display:none !important; }
+    .fc-share .fc-share-btn {
+        display:inline-flex; align-items:center; gap:6px; margin:0; padding:7px 14px; min-height:36px;
+        background:transparent !important; color:#5a4c4a !important; border:1px solid #dbd2d1 !important; border-radius:999px;
+        font:600 13px/1 system-ui,-apple-system,'Segoe UI',sans-serif; cursor:pointer; box-shadow:none; text-transform:none; letter-spacing:0;
+    }
+    .fc-share .fc-share-btn:hover { background:#f6f1f0 !important; color:#231412 !important; }
+    .fc-share .fc-share-btn:focus-visible { outline:2px solid #231412; outline-offset:2px; }
+    .fc-share .fc-share-btn[disabled] { opacity:.7; cursor:progress; }
+    .fc-share .fc-share-btn svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    </style>
+    <div class="fc-share" hidden data-file="<?php echo esc_attr( fc_card_file_name( $post_id ) ); ?>" data-title="<?php echo esc_attr( get_the_title( $post_id ) ); ?>" data-url="<?php echo esc_url( get_permalink( $post_id ) ); ?>">
+        <button type="button" class="fc-share-btn" data-act="download"><?php echo $down; // Fixed markup. ?><span><?php echo esc_html( $words['download'] ); ?></span></button>
+        <button type="button" class="fc-share-btn" data-act="share"><?php echo $share; // Fixed markup. ?><span><?php echo esc_html( $words['share'] ); ?></span></button>
+    </div>
+    <?php
+    return ob_get_clean();
 }
 
 /** The editor's own card picture (e.g. from Canva), shown as it is. */
@@ -159,6 +213,8 @@ function fc_build_card_image( $post_id, $rating_label, $claim ) {
     $img = wp_get_attachment_image( $id, 'large', false, [
         'class'         => 'fc-own-card-img',
         'alt'           => wp_strip_all_tags( $alt ),
+        'data-fc-own'   => '1',
+        'data-full'     => wp_get_attachment_url( $id ),
         'loading'       => 'eager',
         'fetchpriority' => 'high',
     ] );
@@ -331,7 +387,7 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
     </style>
 
     <div class="fc-fc-wrap">
-    <aside class="<?php echo esc_attr( $classes ); ?>" aria-label="<?php echo esc_attr( $words['fact'] ); ?>">
+    <aside data-fc-card class="<?php echo esc_attr( $classes ); ?>" aria-label="<?php echo esc_attr( $words['fact'] ); ?>">
 
         <div class="fc-fc-col fc-fc-col-a">
             <?php if ( $logo_url !== '' ) : ?>

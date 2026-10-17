@@ -1,7 +1,9 @@
 <?php
 /**
- * Settings Page: FC Publisher
- * Settings > FC Publisher in WP Admin.
+ * Settings > Fact Crescendo in WP Admin.
+ *
+ * Most things work on their own; this page is for the few choices a site
+ * may want to change.
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -10,76 +12,37 @@ add_action( 'admin_menu', 'fc_register_settings_page' );
 add_action( 'admin_init', 'fc_register_settings' );
 
 function fc_register_settings_page() {
-    add_options_page(
-        'FC Publisher Settings',
-        'FC Publisher',
-        'manage_options',
-        'fc-publisher-settings',
-        'fc_render_settings_page'
-    );
+    add_options_page( 'Fact Crescendo', 'Fact Crescendo', 'manage_options', 'fc-publisher-settings', 'fc_render_settings_page' );
+}
+
+/** A setting that is one of a fixed list; anything else becomes the default. */
+function fc_register_choice( $name, $choices, $default ) {
+    register_setting( 'fc_publisher_settings_group', $name, [
+        'type'              => 'string',
+        'default'           => $default,
+        'sanitize_callback' => function( $v ) use ( $choices, $default ) {
+            return in_array( (string) $v, $choices, true ) ? (string) $v : $default;
+        },
+    ] );
 }
 
 function fc_register_settings() {
+    fc_register_choice( 'fc_site_key', array_merge( [ '' ], array_keys( fc_site_profiles() ) ), '' );
+    fc_register_choice( 'fc_card_design', [ 'card', 'simple', 'off' ], 'card' );
+    fc_register_choice( 'fc_card_share', [ '1', '0' ], '1' );
+    fc_register_choice( 'fc_featured_stamps', [ '1', '0' ], '1' );
+    fc_register_choice( 'fc_featured_corner', [ 'bottom-left', 'bottom-right', 'top-left', 'top-right' ], 'bottom-left' );
+    fc_register_choice( 'fc_whatsapp_banner_style', [ '', 'card', 'image', 'custom', 'off' ], '' ); // '' = not chosen yet
+    fc_register_choice( 'fc_enable_audio', [ '1', '0' ], '1' );
+
     register_setting( 'fc_publisher_settings_group', 'fc_logo_url', [
         'type'              => 'string',
-        'sanitize_callback' => 'esc_url_raw',
+        'sanitize_callback' => 'fc_sanitize_url',
         'default'           => '',
     ] );
-
-    register_setting( 'fc_publisher_settings_group', 'fc_enable_audio', [
-        'type'              => 'string',
-        'sanitize_callback' => function( $v ) { return $v === '1' ? '1' : '0'; },
-        'default'           => '1',
-    ] );
-
     register_setting( 'fc_publisher_settings_group', 'fc_whatsapp_banner_html', [
         'type'              => 'string',
         'sanitize_callback' => 'fc_sanitize_banner_html',
-        'default'           => '',
-    ] );
-
-    register_setting( 'fc_publisher_settings_group', 'fc_card_design', [
-        'type'              => 'string',
-        'sanitize_callback' => function( $v ) {
-            return in_array( $v, [ 'card', 'simple', 'off' ], true ) ? $v : 'card';
-        },
-        'default'           => 'card',
-    ] );
-
-    register_setting( 'fc_publisher_settings_group', 'fc_whatsapp_banner_style', [
-        'type'              => 'string',
-        'sanitize_callback' => function( $v ) { return $v === 'image' ? 'image' : 'card'; },
-        'default'           => 'card',
-    ] );
-
-    register_setting( 'fc_publisher_settings_group', 'fc_featured_stamps', [
-        'type'              => 'string',
-        'sanitize_callback' => function( $v ) { return $v === '1' ? '1' : '0'; },
-        'default'           => '1',
-    ] );
-
-    register_setting( 'fc_publisher_settings_group', 'fc_featured_corner', [
-        'type'              => 'string',
-        'sanitize_callback' => function( $v ) {
-            return in_array( $v, [ 'top-left', 'top-right', 'bottom-left', 'bottom-right' ], true ) ? $v : 'bottom-left';
-        },
-        'default'           => 'bottom-left',
-    ] );
-
-    register_setting( 'fc_publisher_settings_group', 'fc_show_whatsapp_banner', [
-        'type'              => 'string',
-        'sanitize_callback' => function( $v ) { return $v === '1' ? '1' : '0'; },
-        'default'           => '1',
-    ] );
-
-    // Which site-list entry to use. Empty means "work it out from the
-    // address", which is right everywhere except a staging copy.
-    register_setting( 'fc_publisher_settings_group', 'fc_site_key', [
-        'type'              => 'string',
-        'sanitize_callback' => function( $v ) {
-            $v = (string) $v;
-            return array_key_exists( $v, fc_site_profiles() ) ? $v : '';
-        },
         'default'           => '',
     ] );
 }
@@ -92,260 +55,210 @@ function fc_register_settings() {
  * this list — regardless of who is saving it.
  */
 function fc_sanitize_banner_html( $input ) {
+    $common = [ 'class' => true, 'style' => true, 'id' => true, 'aria-label' => true, 'aria-hidden' => true, 'role' => true ];
     $allowed = [
-        'style'  => [],
-        'div'    => [ 'class' => true, 'style' => true, 'id' => true ],
-        'span'   => [ 'class' => true, 'style' => true ],
-        'figure' => [ 'class' => true, 'style' => true ],
-        'a'      => [ 'href' => true, 'target' => true, 'rel' => true, 'class' => true, 'style' => true ],
-        'img'    => [ 'src' => true, 'alt' => true, 'class' => true, 'width' => true, 'height' => true, 'style' => true, 'crossorigin' => true ],
-        'h1'     => [ 'class' => true, 'style' => true ],
-        'h2'     => [ 'class' => true, 'style' => true ],
-        'h3'     => [ 'class' => true, 'style' => true ],
-        'h4'     => [ 'class' => true, 'style' => true ],
-        'p'      => [ 'class' => true, 'style' => true ],
-        'button' => [ 'class' => true, 'style' => true, 'type' => true ],
-        'svg'    => [ 'viewbox' => true, 'width' => true, 'height' => true, 'fill' => true, 'xmlns' => true, 'class' => true, 'style' => true ],
-        'path'   => [ 'd' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true ],
-        'circle' => [ 'cx' => true, 'cy' => true, 'r' => true, 'fill' => true ],
-        'rect'   => [ 'x' => true, 'y' => true, 'width' => true, 'height' => true, 'rx' => true, 'fill' => true ],
+        'style'   => [],
+        'a'       => $common + [ 'href' => true, 'target' => true, 'rel' => true ],
+        'img'     => $common + [ 'src' => true, 'alt' => true, 'width' => true, 'height' => true, 'loading' => true, 'decoding' => true ],
+        'svg'     => $common + [ 'viewbox' => true, 'width' => true, 'height' => true, 'fill' => true, 'xmlns' => true, 'focusable' => true ],
+        'path'    => [ 'd' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true, 'class' => true ],
+        'g'       => [ 'fill' => true, 'class' => true, 'transform' => true ],
+        'circle'  => [ 'cx' => true, 'cy' => true, 'r' => true, 'fill' => true, 'class' => true ],
+        'rect'    => [ 'x' => true, 'y' => true, 'width' => true, 'height' => true, 'rx' => true, 'fill' => true, 'class' => true ],
+        'polygon' => [ 'points' => true, 'fill' => true, 'class' => true ],
     ];
-    return wp_kses( $input, $allowed );
+    foreach ( [ 'div', 'span', 'figure', 'p', 'h2', 'h3', 'h4', 'h5', 'strong', 'b', 'em', 'i', 'small', 'br', 'button', 'ul', 'ol', 'li' ] as $tag ) {
+        $allowed[ $tag ] = $common;
+    }
+    return wp_kses( (string) $input, $allowed, [ 'http', 'https', 'tel' ] );
+}
+
+/** An on/off switch. The hidden field sends "0" when it is off. */
+function fc_settings_switch( $name, $default, $label, $hint = '' ) {
+    ?>
+    <label class="fc-switch">
+        <input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="0">
+        <input type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="1" <?php checked( get_option( $name, $default ), '1' ); ?>>
+        <span class="fc-switch-track" aria-hidden="true"></span>
+        <span><?php echo esc_html( $label ); ?><?php if ( $hint !== '' ) : ?><small><?php echo esc_html( $hint ); ?></small><?php endif; ?></span>
+    </label>
+    <?php
+}
+
+/** A list of choices shown as large, easy-to-click options. */
+function fc_settings_choices( $name, $current, $choices ) {
+    echo '<div class="fc-choices">';
+    foreach ( $choices as $value => $c ) {
+        printf(
+            '<label class="fc-choice"><input type="radio" name="%s" value="%s" %s><span><strong>%s</strong>%s</span></label>',
+            esc_attr( $name ), esc_attr( $value ), checked( $current, $value, false ),
+            esc_html( $c[0] ), isset( $c[1] ) ? '<small>' . esc_html( $c[1] ) . '</small>' : ''
+        );
+    }
+    echo '</div>';
 }
 
 function fc_render_settings_page() {
     if ( ! current_user_can( 'manage_options' ) ) return;
 
+    $profiles = fc_site_profiles();
+    $chosen   = (string) get_option( 'fc_site_key', '' );
+    $detected = fc_normalise_host( wp_parse_url( home_url(), PHP_URL_HOST ) );
+    $site     = fc_site_profile();
+    $banner   = fc_whatsapp_banner_choice();
     ?>
     <style>
-    .fc-settings-wrap { max-width: 760px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-    .fc-settings-header { display: flex; align-items: center; gap: 12px; margin: 24px 0 4px; }
-    .fc-settings-header svg { width: 26px; height: 26px; color: #e31b23; flex-shrink: 0; }
-    .fc-settings-header h1 { margin: 0; font-size: 22px; font-weight: 700; color: #0f172a; padding: 0; }
-    .fc-settings-sub { color: #64748b; font-size: 14px; margin: 0 0 28px; }
-    .fc-settings-section {
-        background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
-        padding: 24px 28px; margin-bottom: 20px;
-        animation: fc-fade-in 0.3s ease both;
-    }
-    .fc-settings-section h2 { font-size: 15px; font-weight: 700; color: #0f172a; margin: 0 0 4px; }
-    .fc-settings-section .fc-section-desc { font-size: 13px; color: #64748b; margin: 0 0 18px; }
-    .fc-toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; margin: 4px 0; }
-    .fc-toggle * { box-sizing: border-box; }
-    .fc-toggle input[type="checkbox"] { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; padding: 0; pointer-events: none; }
-    .fc-toggle-track { position: relative; display: inline-block; width: 44px; height: 26px; min-width: 44px; background: #cbd5e1; border-radius: 999px; transition: background 0.2s ease; flex-shrink: 0; }
-    .fc-toggle-thumb { position: absolute; top: 50%; left: 3px; width: 20px; height: 20px; margin-top: -10px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.2s ease; }
-    .fc-toggle input[type="checkbox"]:checked ~ .fc-toggle-track { background: #64748b; }
-    .fc-toggle input[type="checkbox"]:checked ~ .fc-toggle-track .fc-toggle-thumb { transform: translateX(18px); }
-    .fc-toggle-text { font-size: 13px; font-weight: 600; color: #334155; line-height: 1.4; }
-    .fc-field { margin-bottom: 18px; }
-    .fc-field:last-child { margin-bottom: 0; }
-    .fc-field label { display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px; }
-    .fc-field input[type="text"], .fc-field input[type="url"], .fc-field input[type="password"], .fc-field textarea {
-        width: 100%; max-width: 480px; font-size: 13px; padding: 9px 12px;
-        border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .fc-field textarea { max-width: 100%; font-family: ui-monospace, monospace; }
-    .fc-field input:focus, .fc-field textarea:focus {
-        outline: none; border-color: #e31b23; box-shadow: 0 0 0 3px rgba(227,27,35,0.1);
-    }
-    .fc-field-hint { font-size: 12px; color: #94a3b8; margin-top: 6px; }
-    .fc-field-hint code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; }
-    .fc-submit-row { margin-top: 4px; }
-    .fc-submit-row .button-primary {
-        background: #e31b23; border-color: #e31b23; box-shadow: none; text-shadow: none;
-        border-radius: 8px; padding: 6px 18px; height: auto; font-weight: 600;
-    }
-    .fc-submit-row .button-primary:hover { background: #c8151c; border-color: #c8151c; }
-    .fc-code-block {
-        background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px;
-        padding: 14px 16px; font-size: 12.5px; font-family: ui-monospace, monospace;
-        color: #334155; overflow-x: auto; margin: 8px 0 0;
-    }
-    @keyframes fc-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .fc-set { max-width: 720px; }
+    .fc-set h1 { font-size: 23px; font-weight: 600; margin: 20px 0 6px; }
+    .fc-set .fc-lead { font-size: 14px; color: #50575e; margin: 0 0 24px; }
+    .fc-box { background: #fff; border: 1px solid #dcdcde; border-radius: 10px; padding: 24px; margin: 0 0 20px; }
+    .fc-box h2 { font-size: 16px; margin: 0 0 4px; }
+    .fc-box > p { color: #50575e; margin: 0 0 18px; font-size: 13px; }
+    .fc-box .fc-row { margin: 18px 0 0; }
+    .fc-box .fc-row > label:not(.fc-switch), .fc-box .fc-label { display: block; font-weight: 600; margin: 0 0 8px; }
+    .fc-box select, .fc-box input[type=url] { min-width: 320px; max-width: 100%; }
+    .fc-box textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    .fc-hint { color: #646970; font-size: 12px; margin: 6px 0 0; }
+    .fc-ok { color: #00a32a; font-weight: 600; }
+    .fc-warn { color: #b32d2e; }
+
+    .fc-choices { display: grid; gap: 8px; }
+    .fc-choice { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid #dcdcde; border-radius: 8px; cursor: pointer; }
+    .fc-choice:hover { border-color: #8c8f94; }
+    .fc-choice:has(input:checked) { border-color: #2271b1; box-shadow: 0 0 0 1px #2271b1; background: #f6f9fc; }
+    .fc-choice input { margin: 2px 0 0; }
+    .fc-choice small, .fc-switch small { display: block; color: #646970; font-weight: 400; margin-top: 2px; }
+
+    .fc-switch { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; font-weight: 600; }
+    .fc-switch input[type=checkbox] { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .fc-switch-track { flex: none; width: 40px; height: 22px; border-radius: 22px; background: #c3c4c7; position: relative; transition: background .15s; margin-top: 1px; }
+    .fc-switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+    .fc-switch input:checked + .fc-switch-track { background: #2271b1; }
+    .fc-switch input:checked + .fc-switch-track::after { transform: translateX(18px); }
+    .fc-switch input:focus-visible + .fc-switch-track { outline: 2px solid #2271b1; outline-offset: 2px; }
+
+    .fc-preview { margin-top: 12px; padding: 16px; border: 1px dashed #c3c4c7; border-radius: 8px; background: #fafafa; }
+    .fc-stamps { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+    .fc-stamps img { height: 70px; width: auto; }
+    .fc-set details { margin: 0 0 20px; }
+    .fc-set summary { cursor: pointer; font-weight: 600; }
+    .fc-set code { font-size: 12px; }
     </style>
 
-    <div class="wrap fc-settings-wrap">
-        <div class="fc-settings-header">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
-            <h1>FC Publisher Settings</h1>
-        </div>
-        <p class="fc-settings-sub">Most of this is automatic. Each site recognises itself from the site list built into the plugin.</p>
+    <div class="wrap fc-set">
+        <h1>Fact Crescendo</h1>
+        <p class="fc-lead">Everything works on its own. Change only what this site needs, then press Save.</p>
 
         <?php settings_errors( 'fc_publisher_settings_group' ); ?>
 
         <form method="post" action="options.php">
             <?php settings_fields( 'fc_publisher_settings_group' ); ?>
 
-            <?php
-            $fc_profiles = fc_site_profiles();
-            $fc_chosen   = (string) get_option( 'fc_site_key', '' );
-            $fc_key      = fc_site_key();
-            $fc_site     = fc_site_profile();
-            ?>
-            <div class="fc-settings-section">
-                <h2>This Site</h2>
-                <?php if ( $fc_key !== '' ) : ?>
-                <p class="fc-section-desc">Recognised as <strong><?php echo esc_html( $fc_site['label'] ); ?></strong> (<?php echo esc_html( $fc_key ); ?>)<?php echo $fc_chosen !== '' ? ' &mdash; chosen by hand below' : ''; ?>. The WhatsApp banner and number come from this entry.</p>
+            <div class="fc-box">
+                <h2>This site</h2>
+                <p>Sets the WhatsApp number and language.</p>
+                <label class="fc-label" for="fc_site_key">Site</label>
+                <select id="fc_site_key" name="fc_site_key">
+                    <option value=""><?php echo esc_html( isset( $profiles[ $detected ] ) ? 'Automatic — ' . $profiles[ $detected ]['label'] : 'Automatic — not recognised' ); ?></option>
+                    <?php foreach ( $profiles as $key => $profile ) : ?>
+                    <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $chosen, $key ); ?>><?php echo esc_html( $profile['label'] ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <?php if ( $site['label'] !== '' ) : ?>
+                <p class="fc-hint">Using <strong><?php echo esc_html( $site['label'] ); ?></strong> · WhatsApp <?php echo esc_html( $site['whatsapp_number'] ); ?></p>
                 <?php else : ?>
-                <p class="fc-section-desc">This site's address isn't in the site list, so no WhatsApp banner is added. That's expected on staging copies and on sites that don't use a banner. To test as one of the listed sites, pick it below.</p>
+                <p class="fc-hint fc-warn">This address isn't in the site list. Pick a site to show its WhatsApp banner.</p>
                 <?php endif; ?>
-                <div class="fc-field">
-                    <label for="fc_site_key">Use the details of</label>
-                    <select id="fc_site_key" name="fc_site_key">
-                        <option value="">Automatic (from this site's address)</option>
-                        <?php foreach ( $fc_profiles as $key => $profile ) : ?>
-                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $fc_chosen, $key ); ?>><?php echo esc_html( ( $profile['label'] ?? $key ) . ' — ' . $key ); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <p class="fc-field-hint">Leave on Automatic on live sites.</p>
-                </div>
             </div>
 
-            <div class="fc-settings-section">
-                <h2>Fact Card</h2>
-                <p class="fc-section-desc">Shown at the top of every fact-check article. Each post can pick something else in its Fact Check panel, including your own picture made in Canva.</p>
-                <div class="fc-field">
-                    <label for="fc_card_design">Card design</label>
-                    <select id="fc_card_design" name="fc_card_design">
-                        <?php
-                        $fc_design = fc_card_design();
-                        foreach ( [
-                            'card'   => 'FactCrescendo card (recommended)',
-                            'simple' => 'Simple — photo with claim and fact bar underneath',
-                            'off'    => 'No card',
-                        ] as $value => $label ) :
-                        ?>
-                        <option value="<?php echo esc_attr( $value ); ?>" <?php selected( $fc_design, $value ); ?>><?php echo esc_html( $label ); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="fc-field">
-                    <label for="fc_logo_url">Logo on the card</label>
-                    <input type="url" id="fc_logo_url" name="fc_logo_url"
-                        value="<?php echo esc_attr( get_option( 'fc_logo_url', '' ) ); ?>"
-                        placeholder="Leave empty to use the Fact Crescendo logo">
-                    <?php if ( fc_card_logo_url() !== '' ) : ?>
-                    <img src="<?php echo esc_url( fc_card_logo_url() ); ?>" alt="" style="height:40px; width:auto; margin-top:10px; display:block;">
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <div class="fc-settings-section">
-                <h2>Featured Image Stamp</h2>
-                <p class="fc-section-desc">Set a plain 1280 × 768 photo as the featured image and the plugin adds the stamp when the post is saved: <strong>Fact checked</strong> for most ratings, <strong>Insight</strong> for Insight articles, none for News. The plain photo is kept for the fact card. Posts published before this was added are left alone unless a stamp is picked on the post.</p>
-
-                <?php if ( ! fc_featured_can_draw() ) : ?>
-                <p class="fc-field-hint" style="color:#b32d2e;">This server can't draw images (the PHP GD extension is missing), so no stamps are added. Ask your host to turn on GD.</p>
-                <?php endif; ?>
-
-                <div class="fc-field">
-                    <label class="fc-toggle">
-                        <input type="hidden" name="fc_featured_stamps" value="0">
-                        <input type="checkbox" name="fc_featured_stamps" value="1" <?php checked( get_option( 'fc_featured_stamps', '1' ), '1' ); ?>>
-                        <span class="fc-toggle-track"><span class="fc-toggle-thumb"></span></span>
-                        <span class="fc-toggle-text">Add stamps to featured images on this site</span>
-                    </label>
-                    <p class="fc-field-hint">Switch off if you make every featured image in Canva.</p>
-                </div>
-
-                <div class="fc-field">
-                    <label for="fc_featured_corner">Stamp position</label>
-                    <select id="fc_featured_corner" name="fc_featured_corner">
-                        <?php foreach ( [
-                            'bottom-left'  => 'Bottom left',
-                            'bottom-right' => 'Bottom right',
-                            'top-left'     => 'Top left',
-                            'top-right'    => 'Top right',
-                        ] as $value => $label ) : ?>
-                        <option value="<?php echo esc_attr( $value ); ?>" <?php selected( fc_featured_corner(), $value ); ?>><?php echo esc_html( $label ); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <p class="fc-field-hint">Applies to posts saved after the change.</p>
-                </div>
-            </div>
-
-            <div class="fc-settings-section">
-                <h2>WhatsApp Banner</h2>
-                <p class="fc-section-desc">Added at the end of every fact-check article. Articles that already have a WhatsApp link pasted into them don't get a second one.</p>
-
-                <div class="fc-field">
-                    <label class="fc-toggle">
-                        <input type="hidden" name="fc_show_whatsapp_banner" value="0">
-                        <input type="checkbox" name="fc_show_whatsapp_banner" value="1" <?php checked( get_option( 'fc_show_whatsapp_banner', '1' ), '1' ); ?>>
-                        <span class="fc-toggle-track"><span class="fc-toggle-thumb"></span></span>
-                        <span class="fc-toggle-text">Show the WhatsApp banner on this site</span>
-                    </label>
-                </div>
-
-                <div class="fc-field">
-                    <label for="fc_whatsapp_banner_style">Banner style</label>
-                    <select id="fc_whatsapp_banner_style" name="fc_whatsapp_banner_style">
-                        <option value="card" <?php selected( get_option( 'fc_whatsapp_banner_style', 'card' ), 'card' ); ?>>New banner — works on phones (recommended)</option>
-                        <option value="image" <?php selected( get_option( 'fc_whatsapp_banner_style', 'card' ), 'image' ); ?>>Old picture banner</option>
-                    </select>
-                </div>
-
-                <?php if ( $fc_site['whatsapp_url'] !== '' ) : ?>
-                <div class="fc-field">
-                    <label>Preview</label>
-                    <div style="max-width:640px;"><?php echo fc_build_whatsapp_card( $fc_site ); // Escaped inside. ?></div>
-                    <?php if ( $fc_site['banner_image'] !== '' ) : ?>
-                    <p class="fc-field-hint">Old picture banner:</p>
-                    <img src="<?php echo esc_url( $fc_site['banner_image'] ); ?>" alt="" style="max-width:360px; width:100%; height:auto; border-radius:8px; border:1px solid #e5e7eb;">
-                    <?php endif; ?>
-                </div>
-                <?php endif; ?>
-
-                <details class="fc-field">
-                    <summary style="cursor:pointer; font-weight:600; font-size:13px; color:#334155;">Use a different banner (advanced)</summary>
-                    <p class="fc-field-hint">Leave this empty to use the built-in banner above. Anything pasted here replaces it.</p>
-                    <textarea id="fc_whatsapp_banner_html" name="fc_whatsapp_banner_html" rows="7"><?php echo esc_textarea( get_option( 'fc_whatsapp_banner_html', '' ) ); ?></textarea>
-                    <p class="fc-field-hint">Style blocks, links, images, and inline SVG icons are allowed. Script tags and event handlers are stripped automatically.</p>
+            <div class="fc-box">
+                <h2>Fact card</h2>
+                <p>Shown at the top of each fact check. Editors can change it on any post.</p>
+                <?php fc_settings_choices( 'fc_card_design', fc_card_design(), [
+                    'card'   => [ 'Fact Crescendo card', 'Photo, rating, claim and fact. Recommended.' ],
+                    'simple' => [ 'Simple card', 'The photo with a claim and fact strip below it.' ],
+                    'off'    => [ 'No card' ],
+                ] ); ?>
+                <div class="fc-row"><?php fc_settings_switch( 'fc_card_share', '1', 'Download and Share buttons', 'Shown under the card.' ); ?></div>
+                <details class="fc-row">
+                    <summary>Use a different logo</summary>
+                    <p class="fc-hint">Leave empty to use the Fact Crescendo logo.</p>
+                    <input type="url" id="fc_logo_url" name="fc_logo_url" value="<?php echo esc_attr( get_option( 'fc_logo_url', '' ) ); ?>" placeholder="https://">
                 </details>
             </div>
 
-            <div class="fc-settings-section">
-                <h2>Audio Narration</h2>
-                <p class="fc-section-desc">The "Listen to this article" player reads the article aloud with the visitor's own browser voice. Free, and shown on English sites only. This site's language: <strong><?php echo esc_html( fc_site_lang() ); ?></strong>.</p>
-
-                <div class="fc-field">
-                    <label class="fc-toggle">
-                        <input type="hidden" name="fc_enable_audio" value="0">
-                        <input type="checkbox" name="fc_enable_audio" value="1" <?php checked( get_option( 'fc_enable_audio', '1' ), '1' ); ?>>
-                        <span class="fc-toggle-track"><span class="fc-toggle-thumb"></span></span>
-                        <span class="fc-toggle-text">Show the audio player on this site</span>
-                    </label>
-                    <p class="fc-field-hint">Turn this off for sites that don't need narration. When off, no player appears and nothing about the article layout changes.</p>
+            <div class="fc-box">
+                <h2>Featured image stamp</h2>
+                <p>Set a plain photo as the featured image. When the post is saved, the stamp is added for you.</p>
+                <?php fc_settings_switch( 'fc_featured_stamps', '1', 'Add stamps to featured images', 'Turn off if you make featured images in Canva.' ); ?>
+                <div class="fc-stamps">
+                    <img src="<?php echo esc_url( FC_PUBLISHER_URL . 'assets/featured/fact-checked.png' ); ?>" alt="Fact checked stamp">
+                    <img src="<?php echo esc_url( FC_PUBLISHER_URL . 'assets/featured/insight.png' ); ?>" alt="Insight badge">
                 </div>
+                <p class="fc-hint">Fact checked for most ratings · Insight for Insight · none for News.</p>
+                <div class="fc-row">
+                    <label for="fc_featured_corner">Position</label>
+                    <select id="fc_featured_corner" name="fc_featured_corner">
+                        <?php foreach ( [ 'bottom-left' => 'Bottom left', 'bottom-right' => 'Bottom right', 'top-left' => 'Top left', 'top-right' => 'Top right' ] as $value => $label ) : ?>
+                        <option value="<?php echo esc_attr( $value ); ?>" <?php selected( fc_featured_corner(), $value ); ?>><?php echo esc_html( $label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php if ( ! fc_featured_can_draw() ) : ?>
+                <p class="fc-hint fc-warn">This server can't draw images, so no stamps are added. Ask your host to turn on PHP GD.</p>
+                <?php endif; ?>
             </div>
 
-            <div class="fc-submit-row">
-                <?php submit_button( 'Save Settings' ); ?>
+            <div class="fc-box">
+                <h2>WhatsApp banner</h2>
+                <p>Shown at the end of each fact check.</p>
+                <?php fc_settings_choices( 'fc_whatsapp_banner_style', $banner, [
+                    'card'   => [ 'New banner', 'Uses this site\'s WhatsApp number. Recommended.' ],
+                    'image'  => [ 'Old picture banner' ],
+                    'custom' => [ 'My own banner', 'Paste the banner code below.' ],
+                    'off'    => [ 'No banner' ],
+                ] ); ?>
+                <div class="fc-row" id="fc-own-banner" <?php echo $banner === 'custom' ? '' : 'hidden'; ?>>
+                    <label for="fc_whatsapp_banner_html">Banner code</label>
+                    <textarea id="fc_whatsapp_banner_html" name="fc_whatsapp_banner_html" rows="8"><?php echo esc_textarea( get_option( 'fc_whatsapp_banner_html', '' ) ); ?></textarea>
+                    <p class="fc-hint">Styles, links, images and icons are kept. Scripts are removed.</p>
+                </div>
+                <?php $preview = fc_get_whatsapp_banner(); ?>
+                <div class="fc-preview">
+                    <?php if ( $preview !== '' ) : echo $preview; // Built and escaped by the plugin. ?>
+                    <?php else : ?><span class="fc-hint">No banner will show. <?php echo $banner === 'off' ? '' : 'Pick a site above, or paste your banner code.'; ?></span><?php endif; ?>
+                </div>
+                <p class="fc-hint">Preview of the saved settings. Press Save to update it.</p>
             </div>
+
+            <div class="fc-box">
+                <h2>Listen to this article</h2>
+                <p>Reads the article aloud with the visitor's browser voice. English sites only.</p>
+                <?php fc_settings_switch( 'fc_enable_audio', '1', 'Show the Listen button', fc_site_lang() === 'en' ? '' : 'This site isn\'t English, so it won\'t show.' ); ?>
+            </div>
+
+            <?php submit_button( 'Save' ); ?>
         </form>
 
-        <div class="fc-settings-section">
-            <h2>Where the Fact Card Appears</h2>
-            <p class="fc-section-desc">By default the card sits at the very top of the article. If you write a byline as the first line, the card would land above it &mdash; so type this on the line where the card should go instead:</p>
-            <div class="fc-code-block">[fact_card]</div>
-            <p class="fc-field-hint">Put it just below the byline. Leave it out entirely on posts without a byline and nothing changes. Anything written above it is skipped by the audio player, so the byline is not read aloud.</p>
-        </div>
+        <details>
+            <summary>Tips</summary>
+            <p>To move the fact card below a byline, type <code>[fact_card]</code> where it should go.</p>
+            <p>Fact-check data for apps: <code><?php echo esc_html( rest_url( 'fc/v1/posts' ) ); ?></code></p>
+        </details>
 
-        <div class="fc-settings-section">
-            <h2>Stamp Image Override</h2>
-            <p class="fc-section-desc">Stamps ship with the plugin and load from this site, so they keep working even if another site is down. To use different images here, add this to your theme's functions.php:</p>
-            <div class="fc-code-block">add_filter( 'fc_stamp_map', function( $map ) {<br>&nbsp;&nbsp;&nbsp;&nbsp;$map['false'] = 'https://yoursite.com/False.png';<br>&nbsp;&nbsp;&nbsp;&nbsp;return $map;<br>} );</div>
-            <p class="fc-section-desc">That changes the author box stamps. For the featured image stamps, point to transparent PNG files on this server:</p>
-            <div class="fc-code-block">add_filter( 'fc_featured_stamp_files', function( $files ) {<br>&nbsp;&nbsp;&nbsp;&nbsp;$files['fact-checked'] = get_stylesheet_directory() . '/my-stamp.png';<br>&nbsp;&nbsp;&nbsp;&nbsp;return $files;<br>} );</div>
-        </div>
-
-        <div class="fc-settings-section">
-            <h2>REST API</h2>
-            <p class="fc-section-desc">Fact-check data for any post, including audio status, is available at:</p>
-            <div class="fc-code-block"><?php echo esc_url( rest_url( 'fc/v1/post/{post_id}' ) ); ?></div>
-        </div>
+        <details>
+            <summary>For developers</summary>
+            <p>Filters: <code>fc_site_profiles</code>, <code>fc_card_labels</code>, <code>fc_card_logo_url</code>, <code>fc_whatsapp_banner_text</code>, <code>fc_featured_stamp_files</code>, <code>fc_stamp_map</code>, <code>fc_claimreview_schema</code>.</p>
+        </details>
     </div>
+
+    <script>
+    // Show the code box only when "My own banner" is picked.
+    document.querySelectorAll('input[name="fc_whatsapp_banner_style"]').forEach(function (r) {
+        r.addEventListener('change', function () {
+            document.getElementById('fc-own-banner').hidden = r.value !== 'custom';
+        });
+    });
+    </script>
     <?php
 }

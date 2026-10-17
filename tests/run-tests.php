@@ -97,6 +97,7 @@ function reset_options() {
     delete_option( 'fc_whatsapp_banner_html' );
     delete_option( 'fc_enable_audio' );
     delete_option( 'fc_whatsapp_banner_style' );
+    delete_option( 'fc_card_share' );
 }
 
 wp_set_current_user( 1 );
@@ -217,6 +218,11 @@ add_filter( 'fc_card_logo_url', '__return_empty_string' );
 check( 'no logo: site name shown instead', strpos( render( $pid ), 'class="fc-fc-site"' ) !== false );
 remove_filter( 'fc_card_logo_url', '__return_empty_string' );
 check( 'card sits before the article text', strpos( $html, 'fc-fc-wrap' ) < strpos( $html, 'First paragraph' ) );
+check( 'Download and Share buttons under the card', strpos( $html, 'data-act="download"' ) !== false && strpos( $html, 'data-act="share"' ) !== false && wp_script_is( 'fc-card-share', 'enqueued' ) );
+check( 'buttons stay hidden until their script runs', strpos( $html, '<div class="fc-share" hidden' ) !== false );
+update_option( 'fc_card_share', '0' );
+check( 'buttons can be switched off', strpos( render( $pid ), 'fc-share-btn' ) === false );
+delete_option( 'fc_card_share' );
 check( 'false rating is red with an X', strpos( render( make_post( array_merge( $base, [ 'fc_rating' => 'false' ] ) ) ), 'fc-fc--red' ) !== false );
 
 $photo = make_image();
@@ -240,7 +246,8 @@ update_post_meta( $pid, 'fc_card_mode', 'image' );
 check( 'own picture chosen but not set: built-in card instead', strpos( render( $pid ), 'fc-fc-wrap' ) !== false );
 update_post_meta( $pid, 'fc_card_image', $canva );
 $html = render( $pid );
-check( 'own picture (Canva) replaces the card', strpos( $html, 'fc-own-card' ) !== false && strpos( $html, 'canva-card' ) !== false && strpos( $html, 'fc-fc-wrap' ) === false );
+check( 'own picture (Canva) replaces the card', strpos( $html, 'fc-own-card' ) !== false && strpos( $html, 'canva-card' ) !== false && strpos( $html, 'class="fc-fc-wrap"' ) === false );
+check( 'own picture can be downloaded as it is', strpos( $html, 'data-fc-own' ) !== false && strpos( $html, 'data-act="download"' ) !== false );
 check( 'own picture has readable alt text', strpos( $html, 'alt="Fact check. Rating: Misleading. Claim: ' ) !== false );
 update_post_meta( $pid, 'fc_card_mode', 'off' );
 $html = render( $pid );
@@ -250,12 +257,16 @@ delete_post_meta( $pid, 'fc_card_mode' );
 // Site setting
 update_option( 'fc_card_design', 'simple' );
 $html = render( $pid );
-check( 'simple design can be chosen instead', strpos( $html, 'fc-hero' ) !== false && strpos( $html, 'fc-fc-wrap' ) === false );
+check( 'simple design can be chosen instead', strpos( $html, 'fc-hero' ) !== false && strpos( $html, 'class="fc-fc-wrap"' ) === false );
 check( 'simple design shows no ** marks', strpos( $html, '**' ) === false );
+check( 'simple design uses the white logo', strpos( $html, 'assets/logo-white.png' ) !== false );
 update_option( 'fc_card_design', 'off' );
-check( 'site can switch the card off', strpos( render( $pid ), 'fc-fc-wrap' ) === false );
+check( 'site can switch the card off', strpos( render( $pid ), 'class="fc-fc-wrap"' ) === false );
 update_post_meta( $pid, 'fc_card_mode', 'card' );
 check( 'a post can still ask for the card', strpos( render( $pid ), 'fc-fc-wrap' ) !== false );
+update_option( 'fc_card_design', 'simple' );
+check( 'site uses the simple card: a post can still pick the Fact Crescendo card', strpos( render( $pid ), 'class="fc-fc-wrap"' ) !== false );
+check( 'card choices never list the same card twice', count( array_unique( fc_card_mode_options() ) ) === 4 && strpos( fc_card_mode_options()[''], 'Simple card' ) === 0 );
 delete_post_meta( $pid, 'fc_card_mode' );
 update_option( 'fc_card_design', 'canva' );
 check( 'old setting name still means the card', fc_card_design() === 'card' );
@@ -428,8 +439,19 @@ check( 'switched off in settings: no banner', strpos( render( $pid ), 'fc-whatsa
 
 update_option( 'fc_show_whatsapp_banner', '1' );
 update_option( 'fc_whatsapp_banner_html', '<p class="custom-banner">Custom</p>' );
+update_option( 'fc_site_key', 'srilanka.factcrescendo.com' );
 $html = render( $pid );
-check( 'banner pasted in settings still wins', strpos( $html, 'custom-banner' ) !== false, substr( $html, -300 ) );
+check( 'old pasted banner no longer hides the chosen site (Sri Lanka bug)', strpos( $html, 'custom-banner' ) === false && strpos( $html, '+94 77 151 4696' ) !== false );
+update_option( 'fc_whatsapp_banner_style', 'custom' );
+check( '"My own banner" shows the pasted code', strpos( render( $pid ), 'custom-banner' ) !== false );
+update_option( 'fc_whatsapp_banner_style', 'off' );
+check( '"No banner" shows none', strpos( render( $pid ), 'fc-whatsapp-banner' ) === false );
+delete_option( 'fc_whatsapp_banner_style' );
+
+$own = '<style>.x{color:red}</style><a href="https://api.whatsapp.com/send?phone=1" class="fc-wa-card" target="_blank" aria-label="WhatsApp"><div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 1"/></svg></div><h4 class="t">Title</h4><p>Line<br>two <span>+91</span></p></a>';
+$kept = fc_sanitize_banner_html( $own );
+check( 'your banner code is kept as written', strpos( $kept, '<style>' ) !== false && strpos( $kept, 'viewbox' ) !== false || strpos( $kept, 'viewBox' ) !== false );
+check( 'your banner keeps line breaks and labels', strpos( $kept, '<br' ) !== false && strpos( $kept, 'aria-label="WhatsApp"' ) !== false );
 
 $saved = fc_sanitize_banner_html( '<p onclick="alert(1)">Hi</p><script>alert(1)</script>' );
 check( 'pasted banner is cleaned of scripts', strpos( $saved, 'script' ) === false && strpos( $saved, 'onclick' ) === false );

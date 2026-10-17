@@ -133,7 +133,8 @@ function fc_featured_sync( $post_id ) {
     }
 
     $files = fc_featured_stamp_files();
-    $key   = implode( '|', [ $badge, fc_featured_corner(), $source, $files[ $badge ] ] );
+    // Changes when the stamp, corner, photo or stamp artwork changes.
+    $key   = implode( '|', [ $badge, fc_featured_corner(), $source, md5_file( $files[ $badge ] ) ] );
 
     // Already up to date.
     if ( $made && $thumb === $made && get_post_meta( $post_id, '_fc_featured_key', true ) === $key ) return;
