@@ -384,6 +384,61 @@ check( 'logged-out saves never make images', (int) get_post_thumbnail_id( $pid7 
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+section( 'One copy only, and a card that keeps its photo' );
+
+/** How many stamped copies this plugin holds for a post. */
+function copies_for( $post_id ) {
+    return count( get_posts( [ 'post_type' => 'attachment', 'post_status' => 'any', 'numberposts' => -1, 'fields' => 'ids', 'meta_key' => '_fc_generated_for', 'meta_value' => $post_id, 'suppress_filters' => true ] ) );
+}
+
+reset_options();
+$one   = make_post( $base );
+$thumb = save_rest( $one, [ 'featured_media' => $plain_photo ] );
+check( 'one stamped copy after the first save', copies_for( $one ) === 1 && $thumb !== $plain_photo );
+
+// A "hide featured image" snippet makes WordPress say there is no featured image.
+add_filter( 'get_post_metadata', $hide = function ( $v, $id, $key ) { return $key === '_thumbnail_id' ? '' : $v; }, 10, 3 );
+$html = render( $one );
+remove_filter( 'get_post_metadata', $hide );
+check( 'card keeps its photo even when a snippet hides the featured image', strpos( $html, '<figure class="fc-fc-photo"' ) !== false );
+check( 'and it is the plain photo, not the stamped one', fc_card_photo_id( $one ) === $plain_photo );
+
+delete_post_meta( $one, '_thumbnail_id' );
+$html = render( $one );
+check( 'no photo at all: the page source says why', strpos( $html, '<!-- Fact Crescendo: no card photo found' ) !== false );
+set_post_thumbnail( $one, $thumb );
+
+// A save running at the same moment makes a stray copy; the next save removes it.
+$files = fc_featured_stamp_files();
+$stray = fc_featured_make( $one, $plain_photo, $files['fact-checked'], 'fact-checked' );
+check( 'a stray copy can appear (two saves at once)', copies_for( $one ) === 2 );
+save_rest( $one, [ 'title' => 'Saved again' ] );
+check( 'the next save removes the stray', copies_for( $one ) === 1 && ! get_post( $stray ) && get_post( $thumb ) );
+
+// The lock: a second run while one is busy does nothing; an old lock is ignored.
+add_option( 'fc_lock_' . $one, time(), '', 'no' );
+check( 'a second save is held off while one is running', fc_featured_lock( $one ) === false );
+update_option( 'fc_lock_' . $one, time() - 600 );
+check( 'an old lock does not block forever', fc_featured_lock( $one ) === true );
+delete_option( 'fc_lock_' . $one );
+check( 'the lock is released after every save', ( save_rest( $one, [ 'title' => 'Again' ] ) || true ) && get_option( 'fc_lock_' . $one ) === false );
+
+// Media Library: only the editor's own pictures are listed.
+$q = fc_hide_generated( [ 'post_type' => 'attachment', 'post_status' => 'inherit', 'posts_per_page' => -1, 'fields' => 'ids' ] );
+$listed = get_posts( $q + [ 'suppress_filters' => true ] );
+check( 'the picture chooser lists the plain photo, not the stamped copy', in_array( $plain_photo, $listed, true ) && ! in_array( (int) get_post_thumbnail_id( $one ), $listed, true ) );
+$res = rest_do_request( new WP_REST_Request( 'GET', '/wp/v2/media/' . (int) get_post_thumbnail_id( $one ) ) );
+check( 'the editor can still show the stamped featured image', $res->get_status() === 200 );
+add_filter( 'fc_hide_generated_copies', '__return_false' );
+check( 'the hiding can be switched off', ! isset( fc_hide_generated( [] )['meta_query'] ) );
+remove_filter( 'fc_hide_generated_copies', '__return_false' );
+
+$copy = (int) get_post_thumbnail_id( $one );
+wp_delete_post( $one, true );
+check( 'deleting the post leaves no stamped copy behind', ! get_post( $copy ) && get_post( $plain_photo ) );
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 section( 'Site list' );
 
 reset_options();

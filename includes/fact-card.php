@@ -51,12 +51,27 @@ function fc_card_photo_id( $post_id ) {
     $own = fc_attachment_image_id( fc_meta( 'fc_card_photo', $post_id ) );
     if ( $own ) return $own;
 
-    $thumb = (int) get_post_thumbnail_id( $post_id );
+    $thumb = fc_featured_id( $post_id );
     if ( $thumb && $thumb === (int) get_post_meta( $post_id, '_fc_featured_made', true ) ) {
         $source = fc_attachment_image_id( get_post_meta( $post_id, '_fc_featured_source', true ) );
         if ( $source ) return $source;
     }
     return $thumb;
+}
+
+/**
+ * The post's featured image ID, read straight from the database.
+ *
+ * Many sites hide the theme's featured image with a snippet or plugin that
+ * makes WordPress say "no featured image" on article pages. The card still
+ * needs the photo, so it asks the database directly.
+ */
+function fc_featured_id( $post_id ) {
+    global $wpdb;
+    return (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = '_thumbnail_id' LIMIT 1",
+        $post_id
+    ) );
 }
 
 /** The logo from Settings, else the Fact Crescendo logo that ships with the plugin. */
@@ -243,6 +258,9 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
 
     if ( $img_html === '' && $claim === '' && $fact === '' ) return '';
 
+    // Shown only in the page source, to help find out why a photo is missing.
+    $note = $img_html === '' ? '<!-- Fact Crescendo: no card photo found (featured image ' . fc_featured_id( $post_id ) . ') -->' : '';
+
     // The frame follows the photo's shape (within limits), so little is cropped.
     $ratio = 1.5;
     $meta  = $photo_id ? wp_get_attachment_metadata( $photo_id ) : [];
@@ -260,6 +278,7 @@ function fc_build_card( $post_id, $rating, $rating_label, $claim, $fact ) {
     $fact_html = preg_replace( '/\*\*(.+?)\*\*/s', '<mark>$1</mark>', esc_html( $fact ) );
 
     ob_start();
+    echo $note; // Numbers only.
     ?>
     <style>
     /* Fonts ship with the plugin. A file only downloads when the page uses

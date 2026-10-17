@@ -100,8 +100,28 @@ function fc_featured_sync( $post_id ) {
     if ( wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) return;
     if ( ! current_user_can( 'edit_post', $post_id ) ) return;
 
+    // One run per post at a time. Two saves arriving together (the editor
+    // can send two) would otherwise each make a copy.
+    if ( ! fc_featured_lock( $post_id ) ) return;
+    try {
+        fc_featured_sync_locked( $post_id );
+    } finally {
+        delete_option( 'fc_lock_' . (int) $post_id );
+    }
+}
+
+/** True when this run may go ahead. A lock older than two minutes is stale and ignored. */
+function fc_featured_lock( $post_id ) {
+    $key = 'fc_lock_' . (int) $post_id;
+    if ( add_option( $key, time(), '', 'no' ) ) return true;
+    if ( time() - (int) get_option( $key ) < 120 ) return false;
+    update_option( $key, time(), false );
+    return true;
+}
+
+function fc_featured_sync_locked( $post_id ) {
     $post  = get_post( $post_id );
-    $thumb = (int) get_post_thumbnail_id( $post_id );
+    $thumb = fc_featured_id( $post_id );
     $made  = (int) get_post_meta( $post_id, '_fc_featured_made', true );
 
     // Featured image removed: our copy is no longer needed.
@@ -137,7 +157,10 @@ function fc_featured_sync( $post_id ) {
     $key   = implode( '|', [ $badge, fc_featured_corner(), $source, md5_file( $files[ $badge ] ) ] );
 
     // Already up to date.
-    if ( $made && $thumb === $made && get_post_meta( $post_id, '_fc_featured_key', true ) === $key ) return;
+    if ( $made && $thumb === $made && get_post_meta( $post_id, '_fc_featured_key', true ) === $key ) {
+        fc_featured_tidy( $post_id, $made );
+        return;
+    }
 
     if ( ! fc_featured_can_draw() || ! current_user_can( 'upload_files' ) ) return;
 
@@ -145,16 +168,35 @@ function fc_featured_sync( $post_id ) {
     if ( ! $new ) return; // left as it was; nothing is lost
 
     set_post_thumbnail( $post_id, $new );
-    if ( $made ) fc_featured_delete_copy( $made, $post_id );
     update_post_meta( $post_id, '_fc_featured_made', $new );
     update_post_meta( $post_id, '_fc_featured_source', $source );
     update_post_meta( $post_id, '_fc_featured_key', $key );
+
+    fc_featured_tidy( $post_id, $new ); // removes the old copy, and any strays
+}
+
+/** Keeps exactly one stamped copy for the post: deletes every other copy this plugin made for it. */
+function fc_featured_tidy( $post_id, $keep ) {
+    $copies = get_posts( [
+        'post_type'        => 'attachment',
+        'post_status'      => 'any',
+        'numberposts'      => 20,
+        'fields'           => 'ids',
+        'meta_key'         => '_fc_generated_for',
+        'meta_value'       => (int) $post_id,
+        'suppress_filters' => true,
+    ] );
+    foreach ( $copies as $id ) {
+        if ( (int) $id !== (int) $keep ) fc_featured_delete_copy( $id, $post_id );
+    }
 }
 
 /** Deletes this post's stamped copy and the notes about it. */
 function fc_featured_forget( $post_id ) {
-    $made = (int) get_post_meta( $post_id, '_fc_featured_made', true );
-    if ( $made && $made !== (int) get_post_thumbnail_id( $post_id ) ) fc_featured_delete_copy( $made, $post_id );
+    $thumb = fc_featured_id( $post_id );
+    $made  = (int) get_post_meta( $post_id, '_fc_featured_made', true );
+    if ( $made && $made !== $thumb ) fc_featured_delete_copy( $made, $post_id );
+    fc_featured_tidy( $post_id, $thumb ); // strays too; never the current featured image
     delete_post_meta( $post_id, '_fc_featured_made' );
     delete_post_meta( $post_id, '_fc_featured_source' );
     delete_post_meta( $post_id, '_fc_featured_key' );
@@ -168,8 +210,32 @@ function fc_featured_delete_copy( $attachment_id, $post_id ) {
 
 // Deleting a post also deletes its stamped copy.
 add_action( 'before_delete_post', function ( $post_id ) {
-    $made = (int) get_post_meta( $post_id, '_fc_featured_made', true );
-    if ( $made ) fc_featured_delete_copy( $made, $post_id );
+    fc_featured_tidy( $post_id, 0 );
+} );
+
+
+// ── Keeping the Media Library tidy ───────────────────────────────────────────
+// Stamped copies are the plugin's own work, not uploads. They are left out of
+// the Media Library lists so editors see only their own pictures — one per
+// article. They still work as featured images. To see them, return false:
+//   add_filter( 'fc_hide_generated_copies', '__return_false' );
+
+/** Adds "not made by this plugin" to a media query. */
+function fc_hide_generated( $args ) {
+    if ( ! apply_filters( 'fc_hide_generated_copies', true ) ) return $args;
+    $args['meta_query']   = isset( $args['meta_query'] ) && is_array( $args['meta_query'] ) ? $args['meta_query'] : [];
+    $args['meta_query'][] = [ 'key' => '_fc_generated_for', 'compare' => 'NOT EXISTS' ];
+    return $args;
+}
+add_filter( 'ajax_query_attachments_args', 'fc_hide_generated' ); // the picture chooser
+add_filter( 'rest_attachment_query', 'fc_hide_generated' );       // the editor's media lists
+
+// The Media Library page's own list.
+add_action( 'pre_get_posts', function ( $query ) {
+    global $pagenow;
+    if ( ! is_admin() || $pagenow !== 'upload.php' || ! $query->is_main_query() ) return;
+    $args = fc_hide_generated( [ 'meta_query' => (array) $query->get( 'meta_query' ) ] );
+    $query->set( 'meta_query', $args['meta_query'] );
 } );
 
 
