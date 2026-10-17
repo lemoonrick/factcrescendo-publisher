@@ -152,16 +152,33 @@ function fc_register_fields() {
         ] );
     }
 
-    // Written by the narration feature, read-only from the editor's side.
+    // Written only by the narration feature. Nobody can change them from the
+    // editor, the posts API or the Custom Fields box.
     foreach ( [ 'fc_audio_url' => 'fc_sanitize_url', 'fc_audio_status' => 'sanitize_key' ] as $key => $clean ) {
         register_post_meta( 'post', $key, [
             'type'              => 'string',
             'single'            => true,
-            'show_in_rest'      => true,
+            'show_in_rest'      => false,
             'sanitize_callback' => $clean,
-            'auth_callback'     => $can_edit,
+            'auth_callback'     => '__return_false',
         ] );
     }
+}
+
+
+// The standard posts API shows meta even for password-protected posts.
+// Hide the fact-check fields there until the post is unlocked.
+add_filter( 'rest_prepare_post', 'fc_hide_locked_fields', 10, 2 );
+
+function fc_hide_locked_fields( $response, $post ) {
+    if ( ! post_password_required( $post ) || current_user_can( 'edit_post', $post->ID ) ) return $response;
+
+    $data = $response->get_data();
+    if ( isset( $data['meta'] ) && is_array( $data['meta'] ) ) {
+        foreach ( array_keys( fc_field_definitions() ) as $key ) unset( $data['meta'][ $key ] );
+        $response->set_data( $data );
+    }
+    return $response;
 }
 
 

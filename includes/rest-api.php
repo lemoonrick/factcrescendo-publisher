@@ -75,7 +75,12 @@ function fc_register_bulk_endpoint() {
 }
 
 function fc_rest_get_posts( $request ) {
-    $page = $request->get_param( 'page' ) ? max( 1, (int) $request->get_param( 'page' ) ) : 1;
+    $page = $request->get_param( 'page' ) ? min( 500, max( 1, (int) $request->get_param( 'page' ) ) ) : 1;
+
+    // Cached for two minutes so repeated calls don't hit the database.
+    $cache_key = 'fc_api_posts_' . $page;
+    $cached    = get_transient( $cache_key );
+    if ( is_array( $cached ) ) return fc_rest_cacheable( $cached );
 
     $query = new WP_Query( [
         'post_type'      => 'post',
@@ -108,10 +113,19 @@ function fc_rest_get_posts( $request ) {
         ];
     }
 
-    return rest_ensure_response( [
+    $result = [
         'page'        => $page,
         'total_pages' => (int) $query->max_num_pages,
         'total_posts' => (int) $query->found_posts,
         'posts'       => $data,
-    ] );
+    ];
+    set_transient( $cache_key, $result, 2 * MINUTE_IN_SECONDS );
+    return fc_rest_cacheable( $result );
+}
+
+/** A response that browsers and CDNs may keep for two minutes. */
+function fc_rest_cacheable( $data ) {
+    $response = rest_ensure_response( $data );
+    $response->header( 'Cache-Control', 'public, max-age=120' );
+    return $response;
 }

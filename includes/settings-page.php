@@ -54,10 +54,10 @@ function fc_register_settings() {
  * removing script tags, event handler attributes, and anything outside
  * this list — regardless of who is saving it.
  */
-function fc_sanitize_banner_html( $input ) {
+function fc_sanitize_banner_html( $input, $keep_styles = false ) {
     $common = [ 'class' => true, 'style' => true, 'id' => true, 'aria-label' => true, 'aria-hidden' => true, 'role' => true ];
     $allowed = [
-        'style'   => [],
+        'style'   => [], // see below
         'a'       => $common + [ 'href' => true, 'target' => true, 'rel' => true ],
         'img'     => $common + [ 'src' => true, 'alt' => true, 'width' => true, 'height' => true, 'loading' => true, 'decoding' => true ],
         'svg'     => $common + [ 'viewbox' => true, 'width' => true, 'height' => true, 'fill' => true, 'xmlns' => true, 'focusable' => true ],
@@ -70,6 +70,10 @@ function fc_sanitize_banner_html( $input ) {
     foreach ( [ 'div', 'span', 'figure', 'p', 'h2', 'h3', 'h4', 'h5', 'strong', 'b', 'em', 'i', 'small', 'br', 'button', 'ul', 'ol', 'li' ] as $tag ) {
         $allowed[ $tag ] = $common;
     }
+    // Style blocks only from people allowed raw HTML (on multisite, not
+    // every site admin is). $keep_styles is for showing code already saved.
+    if ( $keep_styles !== true && ! current_user_can( 'unfiltered_html' ) ) unset( $allowed['style'] );
+
     return wp_kses( (string) $input, $allowed, [ 'http', 'https', 'tel' ] );
 }
 

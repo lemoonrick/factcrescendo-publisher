@@ -215,14 +215,47 @@ function fc_updater_pick_zip( $body ) {
         foreach ( $body['assets'] as $asset ) {
             if ( empty( $asset['browser_download_url'] ) || empty( $asset['name'] ) ) continue;
 
-            if ( strtolower( substr( $asset['name'], -4 ) ) === '.zip' ) {
+            if ( strtolower( substr( $asset['name'], -4 ) ) === '.zip' && fc_updater_trusted_url( $asset['browser_download_url'] ) ) {
                 return (string) $asset['browser_download_url'];
             }
         }
     }
 
-    return ! empty( $body['zipball_url'] ) ? (string) $body['zipball_url'] : '';
+    $zip = ! empty( $body['zipball_url'] ) ? (string) $body['zipball_url'] : '';
+    return fc_updater_trusted_url( $zip ) ? $zip : '';
 }
+
+/** True only for downloads from this plugin's own GitHub repository. */
+function fc_updater_trusted_url( $url ) {
+    $parts = wp_parse_url( (string) $url );
+    if ( ( $parts['scheme'] ?? '' ) !== 'https' ) return false;
+
+    $repo = '/' . strtolower( fc_updater_repo() ) . '/';
+    $path = strtolower( $parts['path'] ?? '' );
+    switch ( strtolower( $parts['host'] ?? '' ) ) {
+        case 'github.com':
+        case 'codeload.github.com':
+            return strpos( $path, $repo ) === 0;
+        case 'api.github.com':
+            return strpos( $path, '/repos' . $repo ) === 0;
+    }
+    return false;
+}
+
+// A last check just before WordPress downloads our update.
+add_filter( 'upgrader_pre_download', 'fc_updater_check_download', 10, 4 );
+
+function fc_updater_check_download( $reply, $package, $upgrader, $hook_extra = [] ) {
+    if ( ( $hook_extra['plugin'] ?? '' ) !== fc_updater_basename() ) return $reply;
+    if ( fc_updater_trusted_url( $package ) ) return $reply;
+    return new WP_Error( 'fc_untrusted_package', 'This update did not come from the FactCrescendo GitHub repository, so it was not installed.' );
+}
+
+// Updates are never installed on their own: an admin clicks Update.
+// That gives a staged rollout, and a bad release can't spread by itself.
+add_filter( 'auto_update_plugin', function ( $update, $item ) {
+    return ( isset( $item->plugin ) && $item->plugin === fc_updater_basename() ) ? false : $update;
+}, 20, 2 );
 
 
 // ── Telling WordPress whether an update exists ───────────────────────────────

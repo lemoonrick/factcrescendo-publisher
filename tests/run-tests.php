@@ -6,6 +6,8 @@
  * produces, and prints PASS or FAIL. Exits non-zero if anything fails.
  */
 
+if ( PHP_SAPI !== 'cli' ) exit; // command line only, never from a browser
+
 require '/wordpress/wp-load.php';
 require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
@@ -509,6 +511,12 @@ check( 'single post endpoint works', $res->get_status() === 200 && ( $data['clai
 $locked = make_post( $base );
 wp_update_post( [ 'ID' => $locked, 'post_password' => 'secret' ] );
 check( 'password-protected posts are not exposed', rest_do_request( new WP_REST_Request( 'GET', '/fc/v1/post/' . $locked ) )->get_status() === 404 );
+wp_set_current_user( 0 );
+$core = rest_do_request( new WP_REST_Request( 'GET', '/wp/v2/posts/' . $locked ) )->get_data();
+check( 'locked posts: the standard posts API hides the fields', ! isset( $core['meta']['fc_claim'] ) && ! isset( $core['meta']['fc_rating'] ), wp_json_encode( $core['meta'] ?? [] ) );
+check( 'locked posts: the page shows no card or verdict', strpos( render( $locked ), 'A viral photo' ) === false && strpos( render( $locked ), 'fc-article-card' ) === false );
+check( 'locked posts: no Google fact-check data', render_head( $locked ) === '' );
+wp_set_current_user( 1 );
 
 $draft = wp_insert_post( [ 'post_title' => 'Draft', 'post_status' => 'draft' ] );
 check( 'drafts are not exposed', rest_do_request( new WP_REST_Request( 'GET', '/fc/v1/post/' . $draft ) )->get_status() === 404 );
@@ -522,6 +530,35 @@ $req->set_body_params( [ 'meta' => [ 'fc_claim' => 'defaced' ] ] );
 rest_do_request( $req );
 check( 'visitors cannot change fields through the API', get_post_meta( $pid, 'fc_claim', true ) === $base['fc_claim'], get_post_meta( $pid, 'fc_claim', true ) );
 wp_set_current_user( 1 );
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+section( 'Safety' );
+
+$req = new WP_REST_Request( 'POST', '/wp/v2/posts/' . $pid );
+$req->set_body_params( [ 'meta' => [ 'fc_audio_url' => 'https://evil.example/a.mp3' ] ] );
+rest_do_request( $req );
+check( 'nobody can set the audio address through the API', get_post_meta( $pid, 'fc_audio_url', true ) === '' );
+
+check( 'updates only from this GitHub repository', fc_updater_trusted_url( 'https://api.github.com/repos/lemoonrick/factcrescendo-publisher/zipball/v4.7.3' )
+    && fc_updater_trusted_url( 'https://github.com/lemoonrick/factcrescendo-publisher/releases/download/v4.7.3/x.zip' )
+    && ! fc_updater_trusted_url( 'https://evil.example/lemoonrick/factcrescendo-publisher/x.zip' )
+    && ! fc_updater_trusted_url( 'https://github.com/someone-else/factcrescendo-publisher/x.zip' )
+    && ! fc_updater_trusted_url( 'http://github.com/lemoonrick/factcrescendo-publisher/x.zip' ) );
+check( 'updates never install on their own', apply_filters( 'auto_update_plugin', true, (object) [ 'plugin' => fc_updater_basename() ] ) === false );
+
+$editor = wp_insert_user( [ 'user_login' => 'ed' . wp_rand(), 'user_pass' => wp_generate_password(), 'role' => 'author' ] );
+wp_set_current_user( $editor );
+check( 'without raw-HTML rights, style blocks are removed', strpos( fc_sanitize_banner_html( '<style>.x{}</style><p>Hi</p>' ), '<style' ) === false );
+wp_set_current_user( 1 );
+$saved_css = '<style>.x{}</style><p>Hi</p>';
+check( 'saved banner styles are kept when shown', strpos( fc_sanitize_banner_html( $saved_css, true ), '<style' ) !== false );
+
+delete_transient( 'fc_api_posts_1' );
+$r1 = rest_do_request( new WP_REST_Request( 'GET', '/fc/v1/posts' ) );
+check( 'list API is cached briefly', get_transient( 'fc_api_posts_1' ) !== false && ( $r1->get_headers()['Cache-Control'] ?? '' ) === 'public, max-age=120' );
+$big = new WP_REST_Request( 'GET', '/fc/v1/posts' ); $big->set_param( 'page', 999999 );
+check( 'list API page number is capped', rest_do_request( $big )->get_data()['page'] === 500 );
 
 
 // ─────────────────────────────────────────────────────────────────────────────

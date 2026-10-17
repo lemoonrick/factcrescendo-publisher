@@ -72,3 +72,19 @@ FactCrescendo Publisher.
 - **Before 4.4.0 a tag was not enough.** Versions 4.1.1, 4.2.0 and 4.3.0 were
   tagged but never published as releases, so every site kept reporting it was
   up to date. That is fixed &mdash; tags now count.
+
+## Keeping updates safe
+
+Every site installs whatever is tagged here, so this GitHub account is the
+key to all of them.
+
+- **Turn on two-factor login** on the GitHub account, and give nobody else
+  write access.
+- **Never push a tag by accident.** The highest version tag wins on every
+  site. Delete a wrong tag straight away.
+- **Never rename or delete this repository.** Sites look for it by name; if
+  the name were freed, someone else could take it.
+- Updates are never installed on their own — an admin clicks **Update** on
+  each site. Update two or three sites first, check them, then the rest.
+- The plugin only accepts downloads from this repository's own GitHub
+  address.

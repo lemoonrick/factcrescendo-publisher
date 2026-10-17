@@ -32,6 +32,9 @@ function fc_inject_blocks( $content ) {
     $post_id = get_the_ID();
     if ( ! fc_is_fact_check( $post_id ) ) return $content;
 
+    // Password-protected and not unlocked yet: show only WordPress's form.
+    if ( post_password_required( $post_id ) ) return $content;
+
     $rating = fc_meta( 'fc_rating', $post_id );
     if ( empty( $rating ) ) return $content;
 
@@ -479,10 +482,11 @@ function fc_get_whatsapp_banner( $content = '' ) {
     if ( preg_match( '#api\.whatsapp\.com/send|wa\.me/#i', (string) $content ) ) return '';
 
     if ( $choice === 'custom' ) {
-        $pasted = trim( (string) get_option( 'fc_whatsapp_banner_html', '' ) );
+        // Cleaned when saved, and again here in case the option was changed
+        // some other way. color-scheme:light stops dark themes turning its
+        // text white.
+        $pasted = trim( fc_sanitize_banner_html( (string) get_option( 'fc_whatsapp_banner_html', '' ), true ) );
         if ( $pasted === '' ) return '';
-        // Cleaned against an allowlist when saved. color-scheme:light stops
-        // dark themes turning its text white.
         return '<div class="fc-whatsapp-banner" style="margin:28px 0; color-scheme:light;">' . $pasted . '</div>';
     }
 

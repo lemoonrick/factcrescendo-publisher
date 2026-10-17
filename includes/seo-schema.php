@@ -46,6 +46,7 @@ function fc_inject_claim_review_schema() {
     if ( $noindex === '1' ) return;
 
     if ( ! fc_is_fact_check( $post_id ) ) return;
+    if ( post_password_required( $post_id ) ) return; // locked: keep the verdict private
 
     $rating = fc_meta( 'fc_rating', $post_id );
     if ( empty( $rating ) ) return;
