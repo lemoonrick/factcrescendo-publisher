@@ -506,6 +506,10 @@ update_post_meta( $pid, 'fc_fact', $base['fc_fact'] );
 $data = rest_do_request( new WP_REST_Request( 'GET', '/fc/v1/post/' . $pid ) )->get_data();
 check( 'single post endpoint works', $res->get_status() === 200 && ( $data['claim'] ?? '' ) === $base['fc_claim'] && $data['is_fact_check'] === true, wp_json_encode( $data ) );
 
+$locked = make_post( $base );
+wp_update_post( [ 'ID' => $locked, 'post_password' => 'secret' ] );
+check( 'password-protected posts are not exposed', rest_do_request( new WP_REST_Request( 'GET', '/fc/v1/post/' . $locked ) )->get_status() === 404 );
+
 $draft = wp_insert_post( [ 'post_title' => 'Draft', 'post_status' => 'draft' ] );
 check( 'drafts are not exposed', rest_do_request( new WP_REST_Request( 'GET', '/fc/v1/post/' . $draft ) )->get_status() === 404 );
 

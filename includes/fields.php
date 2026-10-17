@@ -153,12 +153,13 @@ function fc_register_fields() {
     }
 
     // Written by the narration feature, read-only from the editor's side.
-    foreach ( [ 'fc_audio_url', 'fc_audio_status' ] as $key ) {
+    foreach ( [ 'fc_audio_url' => 'fc_sanitize_url', 'fc_audio_status' => 'sanitize_key' ] as $key => $clean ) {
         register_post_meta( 'post', $key, [
-            'type'          => 'string',
-            'single'        => true,
-            'show_in_rest'  => true,
-            'auth_callback' => $can_edit,
+            'type'              => 'string',
+            'single'            => true,
+            'show_in_rest'      => true,
+            'sanitize_callback' => $clean,
+            'auth_callback'     => $can_edit,
         ] );
     }
 }

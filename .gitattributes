@@ -1,0 +1,6 @@
+# Left out of release downloads (GitHub zips and git archive).
+/tests                         export-ignore
+/RELEASING.md                  export-ignore
+/.gitignore                    export-ignore
+/.gitattributes                export-ignore
+/includes/audio-generator.php  export-ignore

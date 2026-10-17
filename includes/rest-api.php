@@ -34,7 +34,8 @@ function fc_rest_get_post( $request ) {
     $post_id = (int) $request['id'];
     $post    = get_post( $post_id );
 
-    if ( ! $post || $post->post_type !== 'post' || $post->post_status !== 'publish' ) {
+    // Published, public posts only. Password-protected ones stay private.
+    if ( ! $post || $post->post_type !== 'post' || $post->post_status !== 'publish' || post_password_required( $post ) ) {
         return new WP_Error( 'not_found', 'Post not found.', [ 'status' => 404 ] );
     }
 
@@ -79,6 +80,7 @@ function fc_rest_get_posts( $request ) {
     $query = new WP_Query( [
         'post_type'      => 'post',
         'post_status'    => 'publish',
+        'has_password'   => false,
         'posts_per_page' => 10,
         'paged'          => $page,
         'meta_query'     => [
