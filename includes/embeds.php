@@ -262,7 +262,7 @@ add_action( 'init', 'fc_embed_register_handlers' );
 function fc_embed_register_handlers() {
     $patterns = [
         'archive'   => '#https?://(?:www\.)?archive\.org/details/\S+#i',
-        'awesome'   => '#https?://(?:www\.)?awesomescreenshot\.com/video/\d+\S*#i',
+        'awesome'   => '#https?://(?:www\.)?awesomescreenshot\.com/(?:video/\d+|embed\?)\S*#i',
         'instagram' => '#https?://(?:www\.)?instagram\.com/(?:[A-Za-z0-9_.]+/)?(?:p|reels?|tv)/[A-Za-z0-9_-]+\S*#i',
         'facebook'  => '#https?://(?:(?:www|m|web|mbasic)\.)?(?:facebook\.com|fb\.watch)/\S+#i',
         'vimeo'     => '#https?://(?:www\.)?vimeo\.com/manage/videos/\d+\S*#i',
@@ -550,6 +550,16 @@ function fc_embed_convert( $content ) {
     $notes = fc_embed_notes();
     do {
         $before  = $content;
+        // …also when the author typed it as code, e.g. "<p>Side by Side</p>", which became a Custom HTML block.
+        $content = preg_replace_callback(
+            '#<!-- wp:html -->\s*((?:(?!<!-- /wp:html -->).)*?)\s*<!-- /wp:html -->\s*(?=<!-- wp:(?:embed|html|image|gallery|video)\b)#s',
+            function ( $m ) use ( $notes ) {
+                // Only plain text in simple tags: never a player, picture or link.
+                if ( preg_match( '#<(?!/?(?:p|strong|b|em|i|span|br|h[1-6]|div)\b)#i', $m[1] ) ) return $m[0];
+                return isset( $notes[ fc_embed_note_key( $m[1] ) ] ) ? '' : $m[0];
+            },
+            $content
+        );
         $content = preg_replace_callback(
             '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*(?=<!-- wp:(?:embed|html|image|gallery|video)\b)#s',
             function ( $m ) use ( $notes ) {

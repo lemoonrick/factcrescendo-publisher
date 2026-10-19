@@ -1,13 +1,17 @@
 <?php
 /**
  * Plugin Name:       FactCrescendo Publisher
- * Plugin URI:        https://factcrescendo.com
- * Description:       Automates fact-check publishing. Built-in fact-check fields, REST API, auto-injected Fact Card / stamped Featured Image / Author Box / WhatsApp Banner, automatic embeds, ClaimReview schema, and article narration.
+ * Plugin URI:        https://github.com/lemoonrick/factcrescendo-publisher
+ * Description:       Publishing tools for fact-checking sites: fact-check fields, a branded fact card, stamped featured images, a WhatsApp banner, Google fact-check data, and automatic embeds for links pasted from Google Docs.
  * Version:           4.9.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            FactCrescendo
+ * Author URI:        https://factcrescendo.com
+ * Update URI:        https://github.com/lemoonrick/factcrescendo-publisher
+ * Text Domain:       factcrescendo-publisher
  * License:           GPL-2.0+
+ * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;

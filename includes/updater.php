@@ -454,6 +454,13 @@ function fc_updater_action_link( $links ) {
 
 add_action( 'admin_post_fc_check_updates', 'fc_updater_handle_check' );
 
+// A "Settings" link first, under the plugin's name on the Plugins page.
+add_filter( 'plugin_action_links_' . plugin_basename( FC_PUBLISHER_FILE ), function ( $links ) {
+    if ( ! current_user_can( 'manage_options' ) ) return $links;
+    $settings = '<a href="' . esc_url( admin_url( 'options-general.php?page=fc-publisher-settings' ) ) . '">Settings</a>';
+    return array_merge( [ 'settings' => $settings ], $links );
+}, 5 );
+
 /**
  * Handles that link. Only for users who can update plugins, and only via
  * the link itself — the nonce stops it being triggered from elsewhere.
