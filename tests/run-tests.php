@@ -499,6 +499,12 @@ $pasted = make_post( $base, '<p>Body</p><figure><a href="https://api.whatsapp.co
 check( 'article with a pasted banner gets no second one', strpos( render( $pasted ), 'fc-whatsapp-banner' ) === false );
 $channel = make_post( $base, '<p>Body <a href="https://chat.whatsapp.com/abc" onclick="window.open(\'https://wa.me/94721414696 \')">Join our channel</a> or <a href="https://api.whatsapp.com/send?phone=15551234567">another number</a></p>' );
 check( 'another WhatsApp link in the article (channel, other number) does not hide the banner', strpos( render( $channel ), 'fc-whatsapp-banner' ) !== false );
+$own_text = make_post( $base, '<p>Send it to our <a href="https://api.whatsapp.com/send?phone=919049053770&#038;text=Hi">WhatsApp number (9049053770)</a>.</p><p><em>Or <a href="https://wa.me/919049053770">here</a></em></p>' );
+check( 'text links to our own number do not hide the banner', strpos( render( $own_text ), 'fc-whatsapp-banner' ) !== false );
+$own_nested = make_post( $base, '<p><a href="https://api.whatsapp.com/send?phone=919049053770"><span>Message us</span></a></p>' );
+check( 'a text-only button to our number does not hide the banner', strpos( render( $own_nested ), 'fc-whatsapp-banner' ) !== false );
+$own_img = make_post( $base, '<figure class="wp-block-image"><a href="https://api.whatsapp.com/send?phone=919049053770&#038;text=x" target="_blank"><img src="b.png"></a></figure><p>Text</p>' );
+check( 'a pasted banner picture for our number still gets no second banner', strpos( render( $own_img ), 'fc-whatsapp-banner' ) === false );
 
 update_option( 'fc_show_whatsapp_banner', '0' );
 check( 'switched off in settings: no banner', strpos( render( $pid ), 'fc-whatsapp-banner' ) === false );

@@ -463,8 +463,9 @@ function fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_
  *   image  – the old picture banner
  *   custom – banner HTML pasted under Settings
  *   off    – no banner
- * An article that already links to this site's own WhatsApp number (older
- * posts, where the banner was pasted by hand) gets no second one.
+ * The banner shows on every fact check, whatever else the article says about
+ * WhatsApp. The one exception is an older post that already has this site's
+ * banner picture pasted in by hand.
  */
 function fc_whatsapp_banner_choice() {
     $choice = (string) get_option( 'fc_whatsapp_banner_style', '' );
@@ -476,18 +477,25 @@ function fc_whatsapp_banner_choice() {
 }
 
 /**
- * True when the article already carries this site's own WhatsApp banner,
- * pasted in by hand (older posts), so a second one is not added.
+ * True only when the article already carries a pasted WhatsApp banner PICTURE
+ * for this site: a picture inside a link to this site's own number. That is
+ * what older posts have, and a second banner would look doubled.
  *
- * Only a link to THIS site's number counts. Any other WhatsApp link in the
- * text — a channel invite, a tip line, another number — is not a banner, and
- * used to hide the real one by mistake.
+ * Nothing else hides the banner. Text links — "send it to our WhatsApp
+ * number (9049053770)", a channel invite, another number — are ordinary
+ * sentences, and the banner must still appear below them.
  */
 function fc_article_has_own_banner( $content ) {
     $site = fc_site_profile();
     if ( ! preg_match( '/phone=(\d{6,})/', (string) $site['whatsapp_url'], $m ) ) return false;
 
-    return (bool) preg_match( '#(?:api\.whatsapp\.com/send\?phone=|wa\.me/)\s*\+?' . preg_quote( $m[1], '#' ) . '#i', (string) $content );
+    $link = '#(?:api\.whatsapp\.com/send\?phone=|wa\.me/)\s*\+?' . preg_quote( $m[1], '#' ) . '#i';
+
+    if ( ! preg_match_all( '#<a\b([^>]*)>(.*?)</a>#is', (string) $content, $anchors, PREG_SET_ORDER ) ) return false;
+    foreach ( $anchors as $a ) {
+        if ( preg_match( $link, $a[1] ) && stripos( $a[2], '<img' ) !== false ) return true;
+    }
+    return false;
 }
 
 function fc_get_whatsapp_banner( $content = '' ) {
