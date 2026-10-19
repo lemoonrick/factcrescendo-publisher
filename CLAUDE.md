@@ -20,6 +20,7 @@ on every site and finds its own settings by web address.
 - `includes/fact-card.php` — the fact card (the design in the screenshot) and its Download/Share buttons.
 - `includes/content-injection.php` — puts card, author box, banner into the article; stamps; WhatsApp banner.
 - `includes/featured-image.php` — makes the stamped featured image (keeps the plain photo too).
+- `includes/embeds.php` — links on their own line (and embed code pasted as text) become players: Archive.org, Awesome Screenshot, Instagram, Facebook, Vimeo, YouTube, X, our own picture links. Never changes posts published before it arrived.
 - `includes/seo-schema.php` — Google ClaimReview data.
 - `includes/rest-api.php` — read-only public data endpoints.
 - `includes/settings-page.php` — Settings > FC Publisher.

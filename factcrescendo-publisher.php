@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       FactCrescendo Publisher
  * Plugin URI:        https://factcrescendo.com
- * Description:       Automates fact-check publishing. Built-in fact-check fields, REST API, auto-injected Fact Card / stamped Featured Image / Author Box / WhatsApp Banner, ClaimReview schema, and article narration.
- * Version:           4.7.8
+ * Description:       Automates fact-check publishing. Built-in fact-check fields, REST API, auto-injected Fact Card / stamped Featured Image / Author Box / WhatsApp Banner, automatic embeds, ClaimReview schema, and article narration.
+ * Version:           4.8.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            FactCrescendo
@@ -12,7 +12,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'FC_PUBLISHER_VERSION', '4.7.8' );
+define( 'FC_PUBLISHER_VERSION', '4.8.0' );
 define( 'FC_PUBLISHER_FILE', __FILE__ );
 define( 'FC_PUBLISHER_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FC_PUBLISHER_URL', plugin_dir_url( __FILE__ ) );
@@ -31,6 +31,7 @@ require_once FC_PUBLISHER_DIR . 'includes/rest-api.php';
 require_once FC_PUBLISHER_DIR . 'includes/content-injection.php';
 require_once FC_PUBLISHER_DIR . 'includes/fact-card.php';
 require_once FC_PUBLISHER_DIR . 'includes/featured-image.php';
+require_once FC_PUBLISHER_DIR . 'includes/embeds.php';
 require_once FC_PUBLISHER_DIR . 'includes/settings-page.php';
 require_once FC_PUBLISHER_DIR . 'includes/seo-schema.php';
 require_once FC_PUBLISHER_DIR . 'includes/updater.php';
@@ -59,5 +60,7 @@ function fc_publisher_uninstall() {
     delete_option( 'fc_featured_stamps' );
     delete_option( 'fc_featured_corner' );
     delete_option( 'fc_featured_since' );
+    delete_option( 'fc_auto_embeds' );
+    delete_option( 'fc_embeds_since' );
     delete_transient( 'fc_latest_release' );
 }

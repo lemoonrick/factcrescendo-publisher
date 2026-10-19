@@ -20,6 +20,7 @@ if ( is_wp_error( $activated ) ) {
 // activate_plugin() includes the file in this request; hooks registered on
 // init have missed it, so run them now.
 fc_register_fields();
+fc_embed_register_handlers();
 
 $GLOBALS['fc_failures'] = 0;
 $GLOBALS['fc_passes']   = 0;
@@ -100,6 +101,8 @@ function reset_options() {
     delete_option( 'fc_enable_audio' );
     delete_option( 'fc_whatsapp_banner_style' );
     delete_option( 'fc_card_share' );
+    delete_option( 'fc_auto_embeds' );
+    delete_option( 'fc_embeds_since' );
 }
 
 wp_set_current_user( 1 );
@@ -600,6 +603,61 @@ $req->set_body_params( [ 'meta' => [ 'fc_claim' => 'defaced' ] ] );
 rest_do_request( $req );
 check( 'visitors cannot change fields through the API', get_post_meta( $pid, 'fc_claim', true ) === $base['fc_claim'], get_post_meta( $pid, 'fc_claim', true ) );
 wp_set_current_user( 1 );
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+section( 'Embeds' );
+
+reset_options();
+function para( $html ) { return "<!-- wp:paragraph -->\n<p>$html</p>\n<!-- /wp:paragraph -->\n"; }
+$doc = para( 'Intro with an <a href="https://www.facebook.com/odishalive/posts/123">Odisha live news</a> link.' )
+     . para( 'Embed' )
+     . para( '<a href="https://archive.org/details/fb-post-081026">https://archive.org/details/fb-post-081026</a>' )
+     . para( '<a href="https://www.facebook.com/x/posts/1">Facebook Post</a>|<a href="https://archive.org/details/y">Archive link</a>' )
+     . para( 'https://www.instagram.com/reel/DeRV_RoyoIZ/?igsh=abc123' )
+     . para( '&lt;iframe frameborder=&#8221;0&#8243; width=&#8221;640&#8243; src=&#8221;https://www.awesomescreenshot.com/embed?id=57468985&amp;shareKey=43083a894f6137751491<br>bdf604402ad9&#8221;&gt;&lt;/iframe&gt;' )
+     . para( '&lt;iframe src="https://www.facebook.com/plugins/video.php?height=476&amp;href=https%3A%2F%2Fwww.facebook.com%2Freel%2F823825144054334%2F&amp;show_text=true" width="267"&gt;&lt;/iframe&gt;' )
+     . para( '<mark><a href="https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-92.png">https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-92.png</a></mark>' )
+     . para( 'https://www.awesomescreenshot.com/video/57468985?key=43083a894f6137751491bdf604402ad9' )
+     . para( '&lt;iframe src="https://evil.example.com/x"&gt;&lt;/iframe&gt;' )
+     . para( 'https://www.google.com/url?q=https://archive.org/details/zzz&amp;sa=D' )
+     . para( 'https://example.com/wp-content/uploads/a.png' )
+     . para( '<a href="javascript:alert(1)">https://archive.org/details/q</a>' )
+     . para( 'https://www.facebook.com/SomePage' );
+$pid  = make_post( $base, $doc );
+$html = render( $pid );
+check( 'Archive.org link becomes its player', strpos( $html, 'src="https://archive.org/embed/fb-post-081026"' ) !== false );
+check( 'the author\'s "Embed" note above a player is removed', strpos( $html, '>Embed</p>' ) === false && strpos( $html, 'Intro with an' ) !== false );
+check( 'links inside a sentence are left alone', strpos( $html, '<a href="https://www.facebook.com/odishalive/posts/123">Odisha live news</a>' ) !== false );
+check( 'a link line with words ("Facebook Post | Archive link") is left alone', strpos( $html, '>Facebook Post</a>|<a' ) !== false );
+check( 'Instagram reel becomes the post, without tracking bits', strpos( $html, 'src="https://www.instagram.com/reel/DeRV_RoyoIZ/embed/captioned/"' ) !== false && strpos( $html, 'igsh' ) === false );
+check( 'Awesome Screenshot code pasted as text (curly quotes, broken line) becomes the player', strpos( $html, 'src="https://www.awesomescreenshot.com/embed?id=57468985&#038;shareKey=43083a894f6137751491bdf604402ad9"' ) !== false );
+check( 'Awesome Screenshot share link becomes the player', substr_count( $html, 'awesomescreenshot.com/embed?id=57468985' ) === 2 );
+check( 'Facebook reel code pasted as text becomes a tall player', strpos( $html, 'plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F823825144054334%2F' ) !== false && strpos( $html, 'max-width:320px' ) !== false );
+check( 'pasted code is never copied: only our own player markup', strpos( $html, 'height=476' ) === false && strpos( $html, 'frameborder' ) === false );
+check( 'our own picture link becomes the picture', strpos( $html, '<img src="https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-92.png"' ) !== false );
+check( 'Vimeo owner link is read as the public address', fc_embed_vimeo_url( 'https://vimeo.com/manage/videos/1237155433' ) === 'https://vimeo.com/1237155433' && fc_embed_src_to_url( 'https://player.vimeo.com/video/55?h=ab12' ) === 'https://vimeo.com/55/ab12' );
+check( 'embed code from other sites stays as text', strpos( $html, 'evil.example.com' ) !== false && strpos( $html, '<iframe src="https://evil' ) === false );
+check( 'Google redirect links are opened up', strpos( $html, 'src="https://archive.org/embed/zzz"' ) !== false );
+check( 'pictures from other sites are not shown', strpos( $html, '<img src="https://example.com' ) === false );
+check( 'a javascript: link is never embedded', strpos( $html, 'archive.org/embed/q' ) === false );
+check( 'a Facebook page (not a post) stays a link', strpos( $html, 'plugins/post.php?href=https%3A%2F%2Fwww.facebook.com%2FSomePage' ) === false );
+
+$html = render( make_post( [], $doc ) );
+check( 'works on any post, not only fact checks', strpos( $html, 'archive.org/embed/fb-post-081026' ) !== false );
+
+update_option( 'fc_embeds_since', time() + 3600 );
+$html = render( make_post( $base, $doc ) );
+check( 'articles published before this feature are not changed', strpos( $html, 'archive.org/embed' ) === false && strpos( $html, '>Embed</p>' ) !== false );
+delete_option( 'fc_embeds_since' );
+
+update_option( 'fc_auto_embeds', '0' );
+check( 'can be switched off', strpos( render( $pid ), 'archive.org/embed' ) === false );
+delete_option( 'fc_auto_embeds' );
+
+$frame = fc_embed_html( 'https://www.instagram.com/p/"><script>/' );
+check( 'odd addresses cannot break out of the player', strpos( $frame, '<script' ) === false );
+check( 'Embed block in the editor uses the same rules', wp_oembed_get( 'x' ) === false && ( $GLOBALS['wp_embed']->get_embed_handler_html( [], 'https://archive.org/details/abc' ) ?: '' ) !== '' );
 
 
 // ─────────────────────────────────────────────────────────────────────────────

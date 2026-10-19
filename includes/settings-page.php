@@ -34,6 +34,7 @@ function fc_register_settings() {
     fc_register_choice( 'fc_featured_corner', [ 'bottom-left', 'bottom-right', 'top-left', 'top-right' ], 'bottom-left' );
     fc_register_choice( 'fc_whatsapp_banner_style', [ '', 'card', 'image', 'custom', 'off' ], '' ); // '' = not chosen yet
     fc_register_choice( 'fc_enable_audio', [ '1', '0' ], '1' );
+    fc_register_choice( 'fc_auto_embeds', [ '1', '0' ], '1' );
 
     register_setting( 'fc_publisher_settings_group', 'fc_logo_url', [
         'type'              => 'string',
@@ -233,6 +234,12 @@ function fc_render_settings_page() {
                     <?php else : ?><span class="fc-hint">No banner will show. <?php echo $banner === 'off' ? '' : 'Pick a site above, or paste your banner code.'; ?></span><?php endif; ?>
                 </div>
                 <p class="fc-hint">Preview of the saved settings. Press Save to update it.</p>
+            </div>
+
+            <div class="fc-box">
+                <h2>Embeds</h2>
+                <p>Paste the article as it is. A link on its own line becomes the post or video: Archive.org, Awesome Screenshot, Instagram, Facebook, Vimeo, YouTube and X. So do our own picture links and embed code pasted as text.</p>
+                <?php fc_settings_switch( 'fc_auto_embeds', '1', 'Turn links into embeds', 'Older articles are never changed.' ); ?>
             </div>
 
             <div class="fc-box">
