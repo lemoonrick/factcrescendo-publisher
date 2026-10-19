@@ -248,7 +248,7 @@ function fc_render_settings_page() {
                 <div class="fc-row">
                     <label for="fc_embed_notes">Author notes to delete</label>
                     <textarea id="fc_embed_notes" name="fc_embed_notes" rows="6"><?php echo esc_textarea( fc_embed_notes_text() ); ?></textarea>
-                    <p class="fc-hint">One per line, any language. Deleted only when the line holds nothing else. Words like "Image" or "Archive" only when an embed or picture follows; instructions that start with Embed, Insert or Add, or say "side by side", anywhere. Capitals, colons and brackets don't matter.</p>
+                    <p class="fc-hint">One per line, any language. Deleted only when the line holds nothing else and sits just above an embed or picture. Capitals, colons and brackets don't matter.</p>
                 </div>
             </div>
 

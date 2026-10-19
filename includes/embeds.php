@@ -546,8 +546,7 @@ function fc_embed_convert( $content ) {
         $content
     );
 
-    // Author notes ("Embed", "side by side" …): alone just above an embed or picture (empty lines in
-    // between don't matter), or, for plain instructions like "Embed" and "Side by side", anywhere.
+    // Author notes ("Embed", "side by side" …) alone just above an embed or picture.
     $notes = fc_embed_notes();
     do {
         $before  = $content;
@@ -561,22 +560,10 @@ function fc_embed_convert( $content ) {
             },
             $content
         );
-        // A note, then any empty lines, then the embed or picture it was written for.
-        $blank = '(?:<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>(?:\s|&nbsp;|<br\s*/?>)*</p>\s*<!-- /wp:paragraph -->\s*)*';
         $content = preg_replace_callback(
-            '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*' . $blank . '(?=<!-- wp:(?:embed|html|image|gallery|video)\b)#s',
+            '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*(?=<!-- wp:(?:embed|html|image|gallery|video)\b)#s',
             function ( $m ) use ( $notes ) {
                 return isset( $notes[ fc_embed_note_key( $m[1] ) ] ) ? '' : $m[0];
-            },
-            $content
-        );
-        // Plain instructions ("Embed", "Insert here", "Side by side") are never article text:
-        // deleted when alone on a line, even if the picture they talk about did not paste in.
-        $content = preg_replace_callback(
-            '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*#s',
-            function ( $m ) use ( $notes ) {
-                $key = fc_embed_note_key( $m[1] );
-                return isset( $notes[ $key ] ) && preg_match( '/^(?:embed|insert|add)\b|side by side/u', $key ) ? '' : $m[0];
             },
             $content
         );
