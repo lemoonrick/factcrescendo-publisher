@@ -47,7 +47,8 @@ function fc_embeds_apply( $post_id = 0 ) {
 
 // Remember when this arrived, for the rule above.
 add_action( 'init', function () {
-    if ( ! get_option( 'fc_embeds_since' ) ) update_option( 'fc_embeds_since', time(), false );
+    // Autoloaded: read on every page, so it must not cost a database query each time.
+    if ( ! get_option( 'fc_embeds_since' ) ) add_option( 'fc_embeds_since', time(), '', 'yes' );
 } );
 
 
@@ -639,7 +640,8 @@ function fc_embed_restore( $data ) {
     $raw = preg_replace_callback( '#<!-- fc-embed ([A-Za-z0-9+/=]+) -->#', function ( $m ) {
         $v = json_decode( (string) base64_decode( $m[1], true ), true );
         if ( ! is_array( $v ) || count( $v ) !== 5 || ! fc_embed_trusted_src( (string) $v[4] ) ) return '';
-        return fc_embed_frame( (string) $v[4], preg_replace( '/[^a-z]/', '', (string) $v[0] ), (int) $v[2], (int) $v[3], (bool) $v[1] );
+        $type = in_array( $v[0], [ 'video', 'archive', 'instagram', 'facebook' ], true ) ? $v[0] : 'video';
+        return fc_embed_frame( (string) $v[4], $type, (int) $v[2], (int) $v[3], (bool) $v[1] );
     }, wp_unslash( (string) $data['post_content'] ) );
     $data['post_content'] = wp_slash( $raw );
     return $data;
@@ -647,5 +649,6 @@ function fc_embed_restore( $data ) {
 
 /** True only for player addresses the plugin itself writes. */
 function fc_embed_trusted_src( $src ) {
+    if ( ! preg_match( '#^[A-Za-z0-9._~:/?\#@!$&()*+,;=%-]+$#', $src ) ) return false; // no quotes, spaces or brackets
     return (bool) preg_match( '#^https://(?:www\.facebook\.com/plugins/(?:video|post)\.php\?|www\.instagram\.com/(?:p|reel|tv)/[A-Za-z0-9_-]+/embed/|archive\.org/embed/|www\.awesomescreenshot\.com/embed\?|player\.vimeo\.com/video/\d+|www\.youtube\.com/embed/)#', $src );
 }

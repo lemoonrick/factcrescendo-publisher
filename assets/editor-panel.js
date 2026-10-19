@@ -304,7 +304,10 @@
                 if ( resaving ) { resaving = false; wasSaving = saving; return; }
                 var record = wp.data.select( 'core' ).getEntityRecord( 'postType', ed.getCurrentPostType(), ed.getCurrentPostId() );
                 var saved  = record && record.content && record.content.raw;
-                if ( typeof saved === 'string' && saved !== ed.getEditedPostContent() ) {
+                var mine   = wp.data.select( 'core/block-editor' ).getBlocks().map( function ( b ) { return b.name; } ).join( ',' );
+                var theirs = typeof saved === 'string' ? wp.blocks.parse( saved ).map( function ( b ) { return b.name; } ).join( ',' ) : mine;
+                // Only when the plugin really changed the article (blocks added, replaced or deleted).
+                if ( mine !== theirs ) {
                     wp.data.dispatch( 'core/editor' ).resetEditorBlocks( wp.blocks.parse( saved ), { __unstableShouldCreateUndoLevel: false } );
                     if ( wp.data.select( 'core/notices' ) ) {
                         wp.data.dispatch( 'core/notices' ).createInfoNotice( 'Links turned into embeds and author notes removed.', { type: 'snackbar' } );

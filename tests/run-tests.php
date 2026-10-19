@@ -685,6 +685,28 @@ check( '…while other iframes are still removed for them', strpos( $after, 'evi
 wp_set_current_user( 1 );
 kses_remove_filters();
 
+// Hostile input from an author without raw-HTML rights.
+$evil = base64_encode( wp_json_encode( [ 'video', true, 640, 360, 'https://evil.example.com/steal' ] ) );
+$ok   = base64_encode( wp_json_encode( [ 'video', true, 640, 360, 'https://player.vimeo.com/video/123' ] ) );
+$bad  = base64_encode( wp_json_encode( [ 'video"onload="alert(1)', true, 640, 360, 'https://player.vimeo.com/video/123"onload="alert(1)' ] ) );
+wp_update_post( [ 'ID' => $pid, 'post_author' => $author ] );
+wp_set_current_user( $author );
+kses_init();
+$hostile = "<!-- wp:html -->\n<!-- fc-embed $evil -->\n<!-- fc-embed $ok -->\n<!-- fc-embed $bad -->\n<!-- /wp:html -->"
+    . para( '<a href="https://archive.org/details/x&quot; onload=&quot;alert(1)">https://archive.org/details/x" onload="alert(1)</a>' )
+    . para( 'https://archive.org/details/y"><img src=x onerror=alert(1)>' )
+    . para( '&lt;iframe src="https://www.facebook.com/plugins/video.php?href=x&quot; onload=&quot;alert(1)"&gt;&lt;/iframe&gt;' );
+wp_update_post( wp_slash( [ 'ID' => $pid, 'post_content' => $hostile ] ) );
+$got = get_post_field( 'post_content', $pid );
+check( 'a forged player marker pointing at another site is dropped', strpos( $got, 'evil.example.com' ) === false );
+check( 'a forged marker for a trusted site makes only the plugin\'s fixed player markup', substr_count( $got, '<iframe src="https://player.vimeo.com/video/123" ' ) === 1 && strpos( $got, 'video/123onload' ) === false && strpos( $got, 'fc-embed--videoonload' ) === false );
+$dom = new DOMDocument(); @$dom->loadHTML( '<?xml encoding="utf-8"?><body>' . $got . '</body>' );
+$handlers = 0;
+foreach ( $dom->getElementsByTagName( '*' ) as $node ) foreach ( $node->attributes as $attr ) if ( strpos( strtolower( $attr->name ), 'on' ) === 0 ) $handlers++;
+check( 'hostile addresses never create an event handler or script in the article', $handlers === 0 && $dom->getElementsByTagName( 'script' )->length === 0 );
+wp_set_current_user( 1 );
+kses_remove_filters();
+
 $plain = make_post( [], $doc );
 check( 'works on any post, not only fact checks', strpos( get_post_field( 'post_content', $plain ), 'archive.org/embed/fb-post-081026' ) !== false );
 
