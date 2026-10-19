@@ -53,11 +53,30 @@ add_action( 'init', function () {
 
 // ── Building the players ─────────────────────────────────────────────────────
 
+/** Sets (array [w, h]) or reads (no argument) the shape the next player should have. */
+function fc_embed_size_hint( $set = false ) {
+    static $hint = null;
+    if ( $set !== false ) $hint = ( is_array( $set ) && $set[0] > 0 && $set[1] > 0 ) ? [ (int) $set[0], (int) $set[1] ] : null;
+    return $hint;
+}
+
+/** The width and height written in pasted embed code, or null. */
+function fc_embed_code_size( $inner ) {
+    $text = html_entity_decode( wp_strip_all_tags( preg_replace( '#<br\s*/?>#i', ' ', $inner ) ), ENT_QUOTES, 'UTF-8' );
+    $text = str_replace( [ "\u{201C}", "\u{201D}", "\u{2033}" ], '"', $text );
+    if ( preg_match( '#\swidth\s*=\s*["\']?(\d{2,4})#i', $text, $w ) && preg_match( '#\sheight\s*=\s*["\']?(\d{2,4})#i', $text, $h ) ) return [ (int) $w[1], (int) $h[1] ];
+    return null;
+}
+
 /**
  * One player. $w × $h is its shape; $wide players fill the column, the
  * others (social posts) keep their own width and sit in the middle.
  */
 function fc_embed_frame( $src, $type, $w, $h, $wide = false ) {
+    // The real shape of the video wins over our guess: a wide screen recording
+    // in a 16:9 box would leave empty bands above and below it.
+    $hint = fc_embed_size_hint();
+    if ( $hint ) { $w = $hint[0]; $h = $hint[1]; }
     $box = $wide ? 'max-width:100%' : 'max-width:' . (int) $w . 'px';
     return '<div class="fc-embed fc-embed--' . esc_attr( $type ) . '" style="' . $box . ';margin:0 auto;">'
         . '<div style="position:relative;width:100%;aspect-ratio:' . (int) $w . '/' . (int) $h . ';">'
@@ -159,7 +178,7 @@ function fc_embed_facebook( $url ) {
         return fc_embed_frame( 'https://www.facebook.com/plugins/video.php?href=' . $href . '&show_text=true&width=320', 'facebook', 320, 640 );
     }
     if ( $is_video ) {
-        return fc_embed_frame( 'https://www.facebook.com/plugins/video.php?href=' . $href . '&show_text=true&width=500', 'facebook', 500, 560 );
+        return fc_embed_frame( 'https://www.facebook.com/plugins/video.php?href=' . $href . '&show_text=false&width=500', 'facebook', 500, 281, true );
     }
     return fc_embed_frame( 'https://www.facebook.com/plugins/post.php?href=' . $href . '&show_text=true&width=500', 'facebook', 500, 640 );
 }
@@ -203,7 +222,13 @@ function fc_embed_vimeo( $url ) {
         set_transient( $key, $html, $html !== '' ? DAY_IN_SECONDS : HOUR_IN_SECONDS );
     }
     if ( ! preg_match( '#<iframe[^>]+src="(https://player\.vimeo\.com/video/[^"]+)"#i', $html, $m ) ) return '';
-    return fc_embed_frame( html_entity_decode( $m[1] ), 'video', 640, 360, true );
+    $w = preg_match( '#\swidth="(\d+)"#', $html, $mw ) ? (int) $mw[1] : 640;
+    $h = preg_match( '#\sheight="(\d+)"#', $html, $mh ) ? (int) $mh[1] : 360;
+    $prev = fc_embed_size_hint();
+    fc_embed_size_hint( $prev ?: [ $w, $h ] );   // the author's own size, if given, still wins
+    $out = fc_embed_frame( html_entity_decode( $m[1] ), 'video', $w, $h, true );
+    fc_embed_size_hint( $prev );
+    return $out;
 }
 
 function fc_embed_quick_lookup( $args ) {
@@ -279,15 +304,19 @@ function fc_embed_content( $content ) {
 function fc_embed_paragraph( $m ) {
     $inner = $m[1];
     $url   = fc_embed_lone_link( $inner );
+    $size  = null;
 
     if ( $url === '' ) {
         $src = fc_embed_code_src( $inner );
         if ( $src === '' ) return $m[0];
         $url = fc_embed_src_to_url( $src );
         if ( $url === '' ) return $m[0];
+        $size = fc_embed_code_size( $inner );
     }
 
+    fc_embed_size_hint( $size ?: null );
     $html = fc_embed_html( $url );
+    fc_embed_size_hint( null );
 
     // YouTube, X and Vimeo: WordPress's own embedding, as when the link is pasted by hand.
     if ( $html === '' && preg_match( '#^https?://(?:(?:www|m)\.)?(?:youtube\.com/(?:watch|shorts/|live/)|youtu\.be/|(?:twitter|x)\.com/\w{1,15}/status/|vimeo\.com/\d)#i', $url ) ) {
@@ -307,26 +336,36 @@ function fc_embed_paragraph( $m ) {
     return '<figure class="wp-block-embed fc-embed-auto"><div class="wp-block-embed__wrapper">' . $html . '</div></figure>';
 }
 
-/** The address when a paragraph is only a link (or only an address), else ''. */
+/**
+ * The address when a paragraph is ONLY one link (or only one address), else ''.
+ *
+ * Strict on purpose: a paragraph is replaced by a player only when nothing
+ * else in it would be lost. Two links on a line ("Facebook Post | Archive
+ * link"), a link with words around it, or a second address all leave the
+ * paragraph exactly as it was written.
+ */
 function fc_embed_lone_link( $inner ) {
     // Formatting the Doc brings along (bold, highlight, spans) doesn't count.
     $bare = trim( preg_replace( '#</?(?:span|strong|b|em|i|u|mark|br)\b[^>]*>|&nbsp;#i', ' ', $inner ) );
 
-    if ( preg_match( '#^(?:<a\s[^>]*?href=(["\'])(.*?)\1[^>]*>(.*?)</a>)$#is', $bare, $a ) ) {
-        $text = trim( html_entity_decode( wp_strip_all_tags( $a[3] ), ENT_QUOTES, 'UTF-8' ) );
+    $anchor = '#<a\s[^>]*?href=(["\'])(.*?)\1[^>]*>((?:(?!</a>).)*)</a>#is';
+    if ( preg_match_all( $anchor, $bare, $a, PREG_SET_ORDER ) ) {
+        if ( count( $a ) !== 1 || trim( preg_replace( $anchor, '', $bare ) ) !== '' ) return '';
+        $text = trim( html_entity_decode( wp_strip_all_tags( $a[0][3] ), ENT_QUOTES, 'UTF-8' ) );
         // Only when the link shows its own address. "Facebook Post" is a word in a sentence.
-        return preg_match( '#^(?:https?://|www\.)\S+$#i', $text ) ? fc_embed_unwrap_url( $a[2] ) : '';
+        if ( ! preg_match( '#^(?:https?://|www\.)\S+$#i', $text ) ) return '';
+        return fc_embed_unwrap_url( $a[0][2] );
     }
     if ( preg_match( '#^https?://[^\s<>"]+$#i', $bare ) ) return fc_embed_unwrap_url( $bare );
     return '';
 }
 
-/** The src of embed code pasted as text (<iframe src="…">), else ''. */
+/** The src of embed code pasted as text (<iframe src="…">), when that is all the paragraph holds, else ''. */
 function fc_embed_code_src( $inner ) {
     $text = html_entity_decode( wp_strip_all_tags( preg_replace( '#<br\s*/?>#i', ' ', $inner ) ), ENT_QUOTES, 'UTF-8' );
     $text = str_replace( [ "\u{201C}", "\u{201D}", "\u{2033}", "\u{2018}", "\u{2019}", "\u{00A0}" ], [ '"', '"', '"', "'", "'", ' ' ], $text );
     $text = trim( $text );
-    if ( ! preg_match( '#^<iframe\b.*</iframe>$#is', $text ) ) return '';
+    if ( ! preg_match( '#^<iframe\b.*</iframe>$#is', $text ) || substr_count( strtolower( $text ), '<iframe' ) !== 1 ) return '';
     if ( ! preg_match( '#\ssrc\s*=\s*(["\'])(.*?)\1#is', $text, $s ) ) return '';
     return preg_replace( '/\s+/', '', $s[2] ); // A long address may have been broken over lines.
 }
@@ -456,7 +495,8 @@ function fc_embed_convert( $content ) {
     $content = preg_replace_callback(
         '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->#s',
         function ( $m ) {
-            $url = fc_embed_lone_link( $m[1] );
+            $url  = fc_embed_lone_link( $m[1] );
+            $size = null;
             if ( $url === '' ) {
                 $src = fc_embed_code_src( $m[1] );
                 $url = $src !== '' ? fc_embed_src_to_url( $src ) : '';
@@ -464,8 +504,11 @@ function fc_embed_convert( $content ) {
                     $code = fc_embed_code_block( $m[1] );
                     return $code !== '' ? $code : $m[0];
                 }
+                $size = fc_embed_code_size( $m[1] );
             }
+            fc_embed_size_hint( $size ?: null );
             $block = fc_embed_block( $url );
+            fc_embed_size_hint( null );
             return $block !== '' ? $block : $m[0];
         },
         $content

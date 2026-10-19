@@ -641,6 +641,10 @@ check( 'author notes above embeds are deleted from the article ("Embed", "Embed:
 check( 'a note word that is not above an embed stays', strpos( $saved, "<p>Embed</p>\n<!-- /wp:paragraph -->\n" ) !== false && substr( rtrim( $saved ), -strlen( '<!-- /wp:paragraph -->' ) ) === '<!-- /wp:paragraph -->' );
 check( 'article sentences with the same word stay', strpos( $saved, 'We embed the evidence below.' ) !== false );
 check( 'links inside a sentence are left alone', strpos( $saved, '<a href="https://www.facebook.com/odishalive/posts/123">Odisha live news</a>' ) !== false );
+$two = fc_embed_convert( para( '<a href="https://www.facebook.com/x/posts/1">https://www.facebook.com/x/posts/1</a>|<a href="https://archive.org/details/y">https://archive.org/details/y</a>' ) . para( '<a href="https://x.com/PIB/status/1">ट्विटर लिंक</a> |' ) . para( '<a href="https://x.com/PIB/status/1">ट्विटर लिंक</a>' ) . para( '&lt;iframe src="https://archive.org/embed/a"&gt;&lt;/iframe&gt; &lt;iframe src="https://archive.org/embed/b"&gt;&lt;/iframe&gt;' ) . para( 'https://archive.org/details/y<br>https://www.facebook.com/x/posts/1' ) );
+check( 'two links on one line (even shown as addresses) are never merged into one player: no link is lost', substr_count( $two, 'facebook.com/x/posts/1' ) === 3 && substr_count( $two, 'archive.org/details/y' ) === 3 && strpos( $two, 'fc-embed' ) === false );
+check( 'source-link labels ("ट्विटर लिंक |") are kept', substr_count( $two, 'ट्विटर लिंक' ) === 2 );
+check( 'two pasted embed codes in one paragraph are kept as text, not reduced to one player', substr_count( $two, 'archive.org/embed/' ) === 2 );
 check( 'a link line with words ("Facebook Post | Archive link") is left alone', strpos( $saved, '>Facebook Post</a>|<a' ) !== false );
 check( 'Instagram reel becomes the post, without tracking bits', strpos( $saved, 'src="https://www.instagram.com/reel/DeRV_RoyoIZ/embed/captioned/"' ) !== false && strpos( $saved, 'igsh' ) === false );
 check( 'Awesome Screenshot code pasted as text (curly quotes, broken line) becomes the player', strpos( $saved, 'awesomescreenshot.com/embed?id=57468985&#038;shareKey=43083a894f6137751491bdf604402ad9' ) !== false );
@@ -712,6 +716,11 @@ $printed = ob_get_clean();
 remove_all_filters( 'fc_embed_notes' );
 check( 'a failure while converting saves the article as written, and prints nothing', strpos( get_post_field( 'post_content', $broken ), '<p>Embed</p>' ) !== false && strpos( $printed, 'STRAY' ) === false );
 
+check( 'a player takes the shape of the pasted code', strpos( fc_embed_convert( para( '&lt;iframe src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F1%2F" width="267" height="591"&gt;&lt;/iframe&gt;' ) ), 'aspect-ratio:267/591' ) !== false );
+fc_embed_size_hint( [ 426, 184 ] );
+check( 'a player takes the shape of its video (wide recording: no empty bands)', strpos( fc_embed_frame( 'https://player.vimeo.com/video/1', 'video', 640, 360, true ), 'aspect-ratio:426/184' ) !== false );
+fc_embed_size_hint( null );
+check( 'a landscape Facebook video gets a landscape frame', strpos( fc_embed_html( 'https://www.facebook.com/x/videos/123/' ), 'aspect-ratio:500/281' ) !== false );
 $frame = fc_embed_html( 'https://www.instagram.com/p/"><script>/' );
 check( 'odd addresses cannot break out of the player', strpos( $frame, '<script' ) === false );
 check( 'Embed block in the editor uses the same rules', ( $GLOBALS['wp_embed']->get_embed_handler_html( [], 'https://archive.org/details/abc' ) ?: '' ) !== '' );
