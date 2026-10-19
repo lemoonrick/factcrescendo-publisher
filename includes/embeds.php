@@ -170,8 +170,10 @@ function fc_embed_facebook_resolve( $url ) {
     $cached = get_transient( $key );
     if ( is_string( $cached ) && $cached !== '' ) return $cached;
 
+    if ( ! fc_embed_may_look_up() ) return $url;
+
     $found    = $url;
-    $response = wp_safe_remote_head( $url, [ 'redirection' => 0, 'timeout' => 5, 'user-agent' => 'Mozilla/5.0 (compatible; FactCrescendo)' ] );
+    $response = wp_safe_remote_head( $url, [ 'redirection' => 0, 'timeout' => 3, 'user-agent' => 'Mozilla/5.0 (compatible; FactCrescendo)' ] );
     $to       = is_wp_error( $response ) ? '' : (string) wp_remote_retrieve_header( $response, 'location' );
     if ( preg_match( '#^https://(?:(?:www|m|web)\.)?facebook\.com/(?!login|checkpoint)#i', $to ) ) $found = $to;
 
@@ -194,11 +196,19 @@ function fc_embed_vimeo( $url ) {
     $key  = 'fc_vimeo_' . md5( $url );
     $html = get_transient( $key );
     if ( ! is_string( $html ) ) {
+        if ( ! fc_embed_may_look_up() ) return '';
+        add_filter( 'oembed_remote_get_args', 'fc_embed_quick_lookup' );
         $html = (string) wp_oembed_get( $url );
+        remove_filter( 'oembed_remote_get_args', 'fc_embed_quick_lookup' );
         set_transient( $key, $html, $html !== '' ? DAY_IN_SECONDS : HOUR_IN_SECONDS );
     }
     if ( ! preg_match( '#<iframe[^>]+src="(https://player\.vimeo\.com/video/[^"]+)"#i', $html, $m ) ) return '';
     return fc_embed_frame( html_entity_decode( $m[1] ), 'video', 640, 360, true );
+}
+
+function fc_embed_quick_lookup( $args ) {
+    $args['timeout'] = 3;
+    return $args;
 }
 
 /** True for a picture in the uploads of this site or another Fact Crescendo site. */
@@ -500,8 +510,33 @@ function fc_embed_on_save( $data, $postarr ) {
     if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return $data;
     if ( ! fc_embeds_apply( (int) ( $postarr['ID'] ?? 0 ) ) ) return $data; // older articles stay as they are
 
-    $data['post_content'] = wp_slash( fc_embed_convert( wp_unslash( (string) $data['post_content'] ) ) );
+    /*
+     * Saving must never fail because of this feature. The editor talks to the
+     * server in JSON, and a warning printed in the middle of that answer — or
+     * an error — shows up as "The response is not a valid JSON response". So
+     * anything printed here is thrown away, and if anything at all goes wrong
+     * the article is saved exactly as it was written.
+     */
+    ob_start();
+    try {
+        $converted = fc_embed_convert( wp_unslash( (string) $data['post_content'] ) );
+        if ( is_string( $converted ) && $converted !== '' ) $data['post_content'] = wp_slash( $converted );
+    } catch ( \Throwable $e ) {
+        // Leave the article as it is.
+    }
+    ob_end_clean();
     return $data;
+}
+
+/**
+ * Whether one more lookup on another website is allowed during this request.
+ * Saving waits for these, so a post with many links must not make the save
+ * slow enough for the server to give up: at most 3 per save, 3 seconds each.
+ * A link whose lookup was skipped is simply tried again on the next save.
+ */
+function fc_embed_may_look_up() {
+    static $used = 0;
+    return ++$used <= 3;
 }
 
 /*

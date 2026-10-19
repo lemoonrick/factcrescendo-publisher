@@ -704,6 +704,14 @@ $mr = get_post_field( 'post_content', $mr );
 check( 'the note list can be changed in Settings, any language', strpos( $mr, 'एम्बेड' ) === false && strpos( $mr, 'Side by side' ) !== false );
 delete_option( 'fc_embed_notes' );
 
+// If anything goes wrong while converting, the article is saved as written and nothing is printed.
+add_filter( 'fc_embed_notes', function () { echo 'STRAY OUTPUT'; throw new Exception( 'boom' ); } );
+ob_start();
+$broken = make_post( [], para( 'Embed' ) . para( 'https://archive.org/details/abc' ) );
+$printed = ob_get_clean();
+remove_all_filters( 'fc_embed_notes' );
+check( 'a failure while converting saves the article as written, and prints nothing', strpos( get_post_field( 'post_content', $broken ), '<p>Embed</p>' ) !== false && strpos( $printed, 'STRAY' ) === false );
+
 $frame = fc_embed_html( 'https://www.instagram.com/p/"><script>/' );
 check( 'odd addresses cannot break out of the player', strpos( $frame, '<script' ) === false );
 check( 'Embed block in the editor uses the same rules', ( $GLOBALS['wp_embed']->get_embed_handler_html( [], 'https://archive.org/details/abc' ) ?: '' ) !== '' );
