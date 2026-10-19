@@ -2,24 +2,31 @@
 /**
  * Links become embeds by themselves.
  *
- * Paste the article from the Google Doc as it is. A link on a line of its
- * own — or embed code that was pasted as text — turns into the right player
- * on the page:
+ * Paste the article from the Google Doc as it is and press Save. A link on a
+ * line of its own — or code that was pasted as text — becomes the right block:
  *
- *   Archive.org          archive.org/details/…          → its player
- *   Awesome Screenshot   awesomescreenshot.com/video/…  → its player
- *   Instagram            post, reel or TV link          → the post
- *   Facebook             post, video, reel, fb.watch    → the post or video
- *   Vimeo                also the owner's /manage/ link → the player
- *   YouTube, X           as WordPress already does
- *   Our own pictures     …factcrescendo.com/wp-content/uploads/…png → the picture
+ *   Archive.org          archive.org/details/…          → Custom HTML player
+ *   Awesome Screenshot   awesomescreenshot.com/video/…  → Custom HTML player
+ *   Instagram            post, reel or TV link          → Custom HTML player
+ *   Facebook             post, video, reel, fb.watch    → Custom HTML player
+ *   Vimeo                also the owner's /manage/ link → Embed block / player
+ *   YouTube, X           → WordPress's own Embed block
+ *   Our own pictures     …factcrescendo.com/wp-content/uploads/…png → Image block
+ *   Other pasted code    e.g. the WhatsApp channel box  → Custom HTML block
  *
- * The player code is always written by the plugin, never copied from the
- * Doc, and only for the sites above. That is why WordPress no longer strips
- * it: nobody pastes code any more.
+ * Author notes like "Embed" or "side by side", alone just above an embed or
+ * picture, are deleted (the list is in Settings).
+ *
+ * All of this is saved into the article as ordinary WordPress blocks, so the
+ * articles keep working if the plugin is ever removed. The player code is
+ * always written by the plugin, never copied from the Doc, and only for the
+ * sites above.
  *
  * Links inside a sentence are left alone. Posts published before this
- * arrived are left exactly as they were.
+ * arrived are left exactly as they were, even when edited later.
+ *
+ * Until the post is saved (e.g. in Preview), the same rules are applied
+ * while the page is shown.
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -327,4 +334,212 @@ function fc_embed_src_to_url( $src ) {
         return 'https://vimeo.com/' . $m[1] . ( ! empty( $q['h'] ) && ctype_xdigit( $q['h'] ) ? '/' . $q['h'] : '' );
     }
     return '';
+}
+
+
+// ── Saved into the article itself, so it lasts without the plugin ───────────
+
+/** Author notes deleted when they sit alone just above an embed or picture. One per line in Settings. */
+function fc_embed_default_notes() {
+    return "embed\nembed here\nembed below\nembed link\nembed video\nembed post\nembed tweet\nembed code\nembed image\nembed photo\n"
+        . "insert\ninsert here\ninsert embed\ninsert image\ninsert photo\ninsert video\ninsert link\n"
+        . "add embed\nadd image\nadd photo\nadd video\nside by side\nimages side by side\nphotos side by side\n"
+        . "image\nimages\nphoto\nphotos\nscreenshot\nscreenshots\nvideo\nlink\nlink here";
+}
+
+function fc_embed_notes() {
+    $list  = (string) get_option( 'fc_embed_notes', fc_embed_default_notes() );
+    $words = [];
+    foreach ( preg_split( '/\R/u', $list ) as $line ) {
+        $line = fc_embed_note_key( $line );
+        if ( $line !== '' ) $words[ $line ] = true;
+    }
+    /** Filter: the author notes to delete, as [ 'embed' => true, … ]. */
+    return apply_filters( 'fc_embed_notes', $words );
+}
+
+/** "  Embed: " → "embed", "(Side-by-side)" → "side by side", so small differences still match. */
+function fc_embed_note_key( $text ) {
+    $text = html_entity_decode( wp_strip_all_tags( (string) $text ), ENT_QUOTES, 'UTF-8' );
+    $text = function_exists( 'mb_strtolower' ) ? mb_strtolower( $text ) : strtolower( $text );
+    $text = preg_replace( '/[\s\x{00A0}\-–—_]+/u', ' ', $text );
+    return trim( $text, " \t:.;,!*()[]{}\"'“”‘’|>" );
+}
+
+/** The blocks that stand in for a link, ready to save, or '' when the link isn't one we embed. */
+function fc_embed_block( $url ) {
+    // YouTube, X, Vimeo: WordPress's own Embed block, exactly as when the link is pasted by hand.
+    if ( preg_match( '#^https?://(?:(?:www|m)\.)?(?:youtube\.com/(?:watch|shorts/|live/)|youtu\.be/)#i', $url ) ) {
+        return fc_embed_core_block( $url, 'video', 'youtube', 'wp-embed-aspect-16-9 wp-has-aspect-ratio' );
+    }
+    if ( preg_match( '#^https?://(?:(?:www|mobile)\.)?(?:twitter|x)\.com/(\w{1,15})/status/(\d+)#i', $url, $m ) ) {
+        return fc_embed_core_block( 'https://twitter.com/' . $m[1] . '/status/' . $m[2], 'rich', 'twitter', '' );
+    }
+    if ( preg_match( '#^https?://(?:www\.)?vimeo\.com/\d+#i', $url ) ) {
+        return fc_embed_core_block( strtok( $url, '?' ), 'video', 'vimeo', 'wp-embed-aspect-16-9 wp-has-aspect-ratio' );
+    }
+
+    $html = fc_embed_html( $url );
+    if ( $html === '' ) return '';
+
+    if ( fc_embed_is_own_image( fc_embed_unwrap_url( $url ) ) ) {
+        return fc_embed_image_block( fc_embed_unwrap_url( $url ) );
+    }
+    // Everything else: a Custom HTML block holding the player.
+    return "<!-- wp:html -->\n" . $html . "\n<!-- /wp:html -->";
+}
+
+function fc_embed_core_block( $url, $type, $provider, $class ) {
+    $attrs = [ 'url' => $url, 'type' => $type, 'providerNameSlug' => $provider, 'responsive' => true ];
+    if ( $class !== '' ) $attrs['className'] = $class;
+    $classes = trim( 'wp-block-embed is-type-' . $type . ' is-provider-' . $provider . ' wp-block-embed-' . $provider . ' ' . $class );
+    return '<!-- wp:embed ' . wp_json_encode( $attrs, JSON_UNESCAPED_SLASHES ) . " -->\n"
+        . '<figure class="' . esc_attr( $classes ) . '"><div class="wp-block-embed__wrapper">' . "\n" . esc_url( $url ) . "\n</div></figure>\n"
+        . '<!-- /wp:embed -->';
+}
+
+function fc_embed_image_block( $url ) {
+    $id = attachment_url_to_postid( $url );
+    if ( $id ) {
+        $src = wp_get_attachment_image_url( $id, 'large' ) ?: $url;
+        return '<!-- wp:image {"id":' . (int) $id . ',"sizeSlug":"large","linkDestination":"none","align":"center"} -->' . "\n"
+            . '<figure class="wp-block-image aligncenter size-large"><img src="' . esc_url( $src ) . '" alt="" class="wp-image-' . (int) $id . '"/></figure>' . "\n"
+            . '<!-- /wp:image -->';
+    }
+    return '<!-- wp:image {"align":"center"} -->' . "\n"
+        . '<figure class="wp-block-image aligncenter"><img src="' . esc_url( $url ) . '" alt=""/></figure>' . "\n"
+        . '<!-- /wp:image -->';
+}
+
+/**
+ * Code pasted as text that isn't a player — e.g. the Sri Lanka "Subscribe to
+ * our WhatsApp Channel" box — becomes a Custom HTML block. Cleaned the same
+ * way WordPress cleans articles: no scripts, no event handlers.
+ */
+function fc_embed_code_block( $inner ) {
+    $text = html_entity_decode( wp_strip_all_tags( preg_replace( '#<br\s*/?>#i', ' ', $inner ) ), ENT_QUOTES, 'UTF-8' );
+    $text = trim( str_replace( [ "\u{201C}", "\u{201D}", "\u{2033}", "\u{2018}", "\u{2019}", "\u{00A0}" ], [ '"', '"', '"', "'", "'", ' ' ], $text ) );
+    if ( ! preg_match( '#^<([a-z][a-z0-9]*)\b[^>]*>.*</\1>$#is', $text ) ) return '';
+
+    // A quoted X post or Instagram post: the proper embed instead of the code.
+    if ( stripos( $text, 'twitter-tweet' ) !== false && preg_match( '#https?://(?:twitter|x)\.com/\w{1,15}/status/\d+#i', $text, $t ) ) {
+        return fc_embed_block( $t[0] );
+    }
+    if ( stripos( $text, 'instagram-media' ) !== false && preg_match( '#https?://(?:www\.)?instagram\.com/(?:p|reels?|tv)/[A-Za-z0-9_-]+#i', $text, $t ) ) {
+        return fc_embed_block( $t[0] );
+    }
+
+    $clean = trim( wp_kses_post( preg_replace( '#<(script|style)\b.*?</\1>#is', '', $text ) ) );
+    if ( $clean === '' || strpos( $clean, '<' ) === false ) return '';
+    return "<!-- wp:html -->\n" . $clean . "\n<!-- /wp:html -->";
+}
+
+/**
+ * Rewrites a pasted article into ordinary WordPress blocks: links and pasted
+ * code become Embed, Custom HTML and Image blocks; author notes above them
+ * are deleted. Anything else is left exactly as it is.
+ */
+function fc_embed_convert( $content ) {
+    if ( strpos( $content, '<!-- wp:' ) === false ) return $content; // classic editor: not touched
+
+    // Paragraph blocks holding only a link, embed code, or pasted HTML.
+    $content = preg_replace_callback(
+        '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->#s',
+        function ( $m ) {
+            $url = fc_embed_lone_link( $m[1] );
+            if ( $url === '' ) {
+                $src = fc_embed_code_src( $m[1] );
+                $url = $src !== '' ? fc_embed_src_to_url( $src ) : '';
+                if ( $url === '' ) {
+                    $code = fc_embed_code_block( $m[1] );
+                    return $code !== '' ? $code : $m[0];
+                }
+            }
+            $block = fc_embed_block( $url );
+            return $block !== '' ? $block : $m[0];
+        },
+        $content
+    );
+
+    // Embed blocks WordPress can't show on its own (Instagram, Facebook, …) become Custom HTML.
+    $content = preg_replace_callback(
+        '#<!-- wp:embed\s+(\{[^\n]*?\})\s+-->.*?<!-- /wp:embed -->#s',
+        function ( $m ) {
+            $attrs = json_decode( $m[1], true );
+            $url   = is_array( $attrs ) ? (string) ( $attrs['url'] ?? '' ) : '';
+            if ( $url === '' || preg_match( '#youtube\.com|youtu\.be|twitter\.com|x\.com/|vimeo\.com/\d#i', $url ) ) return $m[0];
+            $html = fc_embed_html( $url );
+            if ( $html === '' ) return $m[0];
+            return fc_embed_is_own_image( $url ) ? fc_embed_image_block( $url ) : "<!-- wp:html -->\n" . $html . "\n<!-- /wp:html -->";
+        },
+        $content
+    );
+
+    // Author notes ("Embed", "side by side" …) alone just above an embed or picture.
+    $notes = fc_embed_notes();
+    do {
+        $before  = $content;
+        $content = preg_replace_callback(
+            '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*(?=<!-- wp:(?:embed|html|image|gallery|video)\b)#s',
+            function ( $m ) use ( $notes ) {
+                return isset( $notes[ fc_embed_note_key( $m[1] ) ] ) ? '' : $m[0];
+            },
+            $content
+        );
+    } while ( $content !== $before );
+
+    return $content;
+}
+
+// When a post is saved. After WordPress has cleaned the content, so the
+// players the plugin writes are kept.
+add_filter( 'wp_insert_post_data', 'fc_embed_on_save', 10, 2 );
+
+function fc_embed_on_save( $data, $postarr ) {
+    if ( ! in_array( $data['post_type'] ?? '', [ 'post', 'page' ], true ) ) return $data;
+    if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return $data;
+    if ( ! fc_embeds_apply( (int) ( $postarr['ID'] ?? 0 ) ) ) return $data; // older articles stay as they are
+
+    $data['post_content'] = wp_slash( fc_embed_convert( wp_unslash( (string) $data['post_content'] ) ) );
+    return $data;
+}
+
+/*
+ * Keeping the players through later saves.
+ *
+ * For editors without the "unfiltered HTML" right (common on multisite),
+ * WordPress removes every <iframe> when a post is saved. Just before that
+ * cleaning, the plugin's own players — and only those, with an address from
+ * the sites above — are set aside as a note, and put back right after.
+ */
+add_filter( 'content_save_pre', 'fc_embed_protect', 9 );
+add_filter( 'wp_insert_post_data', 'fc_embed_restore', 5 );
+
+/** The exact markup fc_embed_frame() writes. */
+function fc_embed_frame_pattern() {
+    return '#<div class="fc-embed fc-embed--([a-z]+)" style="max-width:(100%|\d+px);margin:0 auto;"><div style="position:relative;width:100%;aspect-ratio:(\d+)/(\d+);"><iframe src="([^"]+)"[^>]*></iframe></div></div>#';
+}
+
+function fc_embed_protect( $content ) {
+    if ( ! has_filter( 'content_save_pre', 'wp_filter_post_kses' ) || strpos( (string) $content, 'fc-embed' ) === false ) return $content;
+    $raw = preg_replace_callback( fc_embed_frame_pattern(), function ( $m ) {
+        return '<!-- fc-embed ' . base64_encode( wp_json_encode( [ $m[1], $m[2] === '100%', (int) $m[3], (int) $m[4], html_entity_decode( $m[5] ) ] ) ) . ' -->';
+    }, wp_unslash( (string) $content ) );
+    return wp_slash( $raw );
+}
+
+function fc_embed_restore( $data ) {
+    if ( strpos( (string) $data['post_content'], '<!-- fc-embed ' ) === false ) return $data;
+    $raw = preg_replace_callback( '#<!-- fc-embed ([A-Za-z0-9+/=]+) -->#', function ( $m ) {
+        $v = json_decode( (string) base64_decode( $m[1], true ), true );
+        if ( ! is_array( $v ) || count( $v ) !== 5 || ! fc_embed_trusted_src( (string) $v[4] ) ) return '';
+        return fc_embed_frame( (string) $v[4], preg_replace( '/[^a-z]/', '', (string) $v[0] ), (int) $v[2], (int) $v[3], (bool) $v[1] );
+    }, wp_unslash( (string) $data['post_content'] ) );
+    $data['post_content'] = wp_slash( $raw );
+    return $data;
+}
+
+/** True only for player addresses the plugin itself writes. */
+function fc_embed_trusted_src( $src ) {
+    return (bool) preg_match( '#^https://(?:www\.facebook\.com/plugins/(?:video|post)\.php\?|www\.instagram\.com/(?:p|reel|tv)/[A-Za-z0-9_-]+/embed/|archive\.org/embed/|www\.awesomescreenshot\.com/embed\?|player\.vimeo\.com/video/\d+|www\.youtube\.com/embed/)#', $src );
 }

@@ -282,6 +282,43 @@
         );
     }
 
+    /**
+     * After a save, show what the plugin made of the article.
+     *
+     * When the post is saved, links and pasted code become Embed, Custom HTML
+     * and Image blocks, and author notes like "Embed" are deleted (embeds.php).
+     * The editor would otherwise keep showing the article as it was pasted,
+     * so the saved version is loaded back in, and saved once more so the
+     * editor doesn't think there are unsaved changes.
+     */
+    ( function () {
+        if ( ! wp.blocks || ! wp.blocks.parse ) return;
+        var wasSaving = false, resaving = false;
+
+        wp.data.subscribe( function () {
+            var ed = wp.data.select( 'core/editor' );
+            if ( ! ed ) return;
+            var saving = ed.isSavingPost() && ! ed.isAutosavingPost();
+
+            if ( wasSaving && ! saving && ed.didPostSaveRequestSucceed() ) {
+                if ( resaving ) { resaving = false; wasSaving = saving; return; }
+                var record = wp.data.select( 'core' ).getEntityRecord( 'postType', ed.getCurrentPostType(), ed.getCurrentPostId() );
+                var saved  = record && record.content && record.content.raw;
+                if ( typeof saved === 'string' && saved !== ed.getEditedPostContent() ) {
+                    wp.data.dispatch( 'core/editor' ).resetEditorBlocks( wp.blocks.parse( saved ), { __unstableShouldCreateUndoLevel: false } );
+                    if ( wp.data.select( 'core/notices' ) ) {
+                        wp.data.dispatch( 'core/notices' ).createInfoNotice( 'Links turned into embeds and author notes removed.', { type: 'snackbar' } );
+                    }
+                    if ( wp.data.select( 'core/editor' ).isEditedPostDirty() ) {
+                        resaving = true;
+                        wp.data.dispatch( 'core/editor' ).savePost();
+                    }
+                }
+            }
+            wasSaving = saving;
+        } );
+    } )();
+
     wp.plugins.registerPlugin( 'fc-fact-check', {
         render: function () {
             return el( wp.element.Fragment, null, el( FactCheckPanel ), el( ReadyCheck ) );

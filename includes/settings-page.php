@@ -36,6 +36,11 @@ function fc_register_settings() {
     fc_register_choice( 'fc_enable_audio', [ '1', '0' ], '1' );
     fc_register_choice( 'fc_auto_embeds', [ '1', '0' ], '1' );
 
+    register_setting( 'fc_publisher_settings_group', 'fc_embed_notes', [
+        'type'              => 'string',
+        'sanitize_callback' => 'sanitize_textarea_field',
+        'default'           => fc_embed_default_notes(),
+    ] );
     register_setting( 'fc_publisher_settings_group', 'fc_logo_url', [
         'type'              => 'string',
         'sanitize_callback' => 'fc_sanitize_url',
@@ -238,8 +243,13 @@ function fc_render_settings_page() {
 
             <div class="fc-box">
                 <h2>Embeds</h2>
-                <p>Paste the article as it is. A link on its own line becomes the post or video: Archive.org, Awesome Screenshot, Instagram, Facebook, Vimeo, YouTube and X. So do our own picture links and embed code pasted as text.</p>
+                <p>Paste the article as it is and press Save. A link on its own line becomes the post or video: Archive.org, Awesome Screenshot, Instagram, Facebook, Vimeo, YouTube and X. Our own picture links become pictures, and code pasted as text becomes a Custom HTML block. It is saved into the article, so it keeps working even without this plugin.</p>
                 <?php fc_settings_switch( 'fc_auto_embeds', '1', 'Turn links into embeds', 'Older articles are never changed.' ); ?>
+                <div class="fc-row">
+                    <label for="fc_embed_notes">Author notes to delete</label>
+                    <textarea id="fc_embed_notes" name="fc_embed_notes" rows="6"><?php echo esc_textarea( get_option( 'fc_embed_notes', fc_embed_default_notes() ) ); ?></textarea>
+                    <p class="fc-hint">One per line, any language. Deleted only when the line holds nothing else and sits just above an embed or picture. Capitals, colons and brackets don't matter.</p>
+                </div>
             </div>
 
             <div class="fc-box">
