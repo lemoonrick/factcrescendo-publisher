@@ -705,6 +705,10 @@ delete_option( 'fc_auto_embeds' );
 update_option( 'fc_embed_notes', "Embed\nएम्बेड करा" );
 $mr = make_post( [], para( 'एम्बेड करा' ) . para( 'https://archive.org/details/abc' ) . para( 'Side by side' ) . para( 'https://archive.org/details/def' ) );
 $mr = get_post_field( 'post_content', $mr );
+update_option( 'fc_embed_notes', fc_embed_previous_default_notes() );
+$ar = get_post_field( 'post_content', make_post( [], para( 'Archive Link' ) . para( 'https://archive.org/details/abc' ) . para( '<strong>Archive:</strong>' ) . para( 'https://archive.org/details/def' ) . para( 'Facebook | Archive' ) . para( 'Fact Check-' ) ) );
+check( '"Archive" and "Archive Link" notes above an embed are deleted (also for a list saved before they were added)', strpos( $ar, 'Archive Link' ) === false && strpos( $ar, '>Archive:' ) === false && strpos( $ar, 'Facebook | Archive' ) !== false && strpos( $ar, 'Fact Check-' ) !== false );
+delete_option( 'fc_embed_notes' );
 check( 'the note list can be changed in Settings, any language', strpos( $mr, 'एम्बेड' ) === false && strpos( $mr, 'Side by side' ) !== false );
 delete_option( 'fc_embed_notes' );
 

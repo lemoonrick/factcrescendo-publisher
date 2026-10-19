@@ -393,11 +393,29 @@ function fc_embed_default_notes() {
     return "embed\nembed here\nembed below\nembed link\nembed video\nembed post\nembed tweet\nembed code\nembed image\nembed photo\n"
         . "insert\ninsert here\ninsert embed\ninsert image\ninsert photo\ninsert video\ninsert link\n"
         . "add embed\nadd image\nadd photo\nadd video\nside by side\nimages side by side\nphotos side by side\n"
+        . "image\nimages\nphoto\nphotos\nscreenshot\nscreenshots\nvideo\nlink\nlink here\n"
+        . "archive\narchive link\narchive links\narchive url\narchive here\narchive embed\narchive video\narchive version\n"
+        . "archived\narchived link\narchived video\narchived version\narchive.org\narchive.org link\narchive.org video\n"
+        . "link to archive\nlink of archive\narchive of the video\narchive of the post";
+}
+
+/** The list that shipped before the Archive words were added. A site still on it gets the new default. */
+function fc_embed_previous_default_notes() {
+    return "embed\nembed here\nembed below\nembed link\nembed video\nembed post\nembed tweet\nembed code\nembed image\nembed photo\n"
+        . "insert\ninsert here\ninsert embed\ninsert image\ninsert photo\ninsert video\ninsert link\n"
+        . "add embed\nadd image\nadd photo\nadd video\nside by side\nimages side by side\nphotos side by side\n"
         . "image\nimages\nphoto\nphotos\nscreenshot\nscreenshots\nvideo\nlink\nlink here";
 }
 
+/** The note list as saved in Settings; a list nobody has changed follows the plugin's default. */
+function fc_embed_notes_text() {
+    $saved = get_option( 'fc_embed_notes', false );
+    if ( $saved === false || trim( (string) $saved ) === '' || trim( (string) $saved ) === trim( fc_embed_previous_default_notes() ) ) return fc_embed_default_notes();
+    return (string) $saved;
+}
+
 function fc_embed_notes() {
-    $list  = (string) get_option( 'fc_embed_notes', fc_embed_default_notes() );
+    $list  = fc_embed_notes_text();
     $words = [];
     foreach ( preg_split( '/\R/u', $list ) as $line ) {
         $line = fc_embed_note_key( $line );

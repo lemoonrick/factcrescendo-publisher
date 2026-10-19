@@ -247,7 +247,7 @@ function fc_render_settings_page() {
                 <?php fc_settings_switch( 'fc_auto_embeds', '1', 'Turn links into embeds', 'Older articles are never changed.' ); ?>
                 <div class="fc-row">
                     <label for="fc_embed_notes">Author notes to delete</label>
-                    <textarea id="fc_embed_notes" name="fc_embed_notes" rows="6"><?php echo esc_textarea( get_option( 'fc_embed_notes', fc_embed_default_notes() ) ); ?></textarea>
+                    <textarea id="fc_embed_notes" name="fc_embed_notes" rows="6"><?php echo esc_textarea( fc_embed_notes_text() ); ?></textarea>
                     <p class="fc-hint">One per line, any language. Deleted only when the line holds nothing else and sits just above an embed or picture. Capitals, colons and brackets don't matter.</p>
                 </div>
             </div>
