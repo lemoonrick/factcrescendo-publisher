@@ -497,6 +497,8 @@ remove_filter( 'fc_whatsapp_banner_text', $tr );
 
 $pasted = make_post( $base, '<p>Body</p><figure><a href="https://api.whatsapp.com/send?phone=919049053770"><img src="x.png"></a></figure>' );
 check( 'article with a pasted banner gets no second one', strpos( render( $pasted ), 'fc-whatsapp-banner' ) === false );
+$channel = make_post( $base, '<p>Body <a href="https://chat.whatsapp.com/abc" onclick="window.open(\'https://wa.me/94721414696 \')">Join our channel</a> or <a href="https://api.whatsapp.com/send?phone=15551234567">another number</a></p>' );
+check( 'another WhatsApp link in the article (channel, other number) does not hide the banner', strpos( render( $channel ), 'fc-whatsapp-banner' ) !== false );
 
 update_option( 'fc_show_whatsapp_banner', '0' );
 check( 'switched off in settings: no banner', strpos( render( $pid ), 'fc-whatsapp-banner' ) === false );

@@ -463,8 +463,8 @@ function fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_
  *   image  – the old picture banner
  *   custom – banner HTML pasted under Settings
  *   off    – no banner
- * An article with a WhatsApp link already in it (older posts, where the
- * banner was pasted by hand) gets no second one.
+ * An article that already links to this site's own WhatsApp number (older
+ * posts, where the banner was pasted by hand) gets no second one.
  */
 function fc_whatsapp_banner_choice() {
     $choice = (string) get_option( 'fc_whatsapp_banner_style', '' );
@@ -475,11 +475,26 @@ function fc_whatsapp_banner_choice() {
     return in_array( $choice, [ 'card', 'image', 'custom', 'off' ], true ) ? $choice : 'card';
 }
 
+/**
+ * True when the article already carries this site's own WhatsApp banner,
+ * pasted in by hand (older posts), so a second one is not added.
+ *
+ * Only a link to THIS site's number counts. Any other WhatsApp link in the
+ * text — a channel invite, a tip line, another number — is not a banner, and
+ * used to hide the real one by mistake.
+ */
+function fc_article_has_own_banner( $content ) {
+    $site = fc_site_profile();
+    if ( ! preg_match( '/phone=(\d{6,})/', (string) $site['whatsapp_url'], $m ) ) return false;
+
+    return (bool) preg_match( '#(?:api\.whatsapp\.com/send\?phone=|wa\.me/)\s*\+?' . preg_quote( $m[1], '#' ) . '#i', (string) $content );
+}
+
 function fc_get_whatsapp_banner( $content = '' ) {
     $choice = fc_whatsapp_banner_choice();
     if ( $choice === 'off' ) return '';
 
-    if ( preg_match( '#api\.whatsapp\.com/send|wa\.me/#i', (string) $content ) ) return '';
+    if ( fc_article_has_own_banner( $content ) ) return '';
 
     if ( $choice === 'custom' ) {
         // Cleaned when saved, and again here in case the option was changed

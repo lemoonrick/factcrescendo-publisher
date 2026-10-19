@@ -4,3 +4,4 @@
 /.gitignore                    export-ignore
 /.gitattributes                export-ignore
 /includes/audio-generator.php  export-ignore
+/CLAUDE.md                     export-ignore
