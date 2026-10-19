@@ -79,7 +79,7 @@ function fc_embed_frame( $src, $type, $w, $h, $wide = false ) {
     $hint = fc_embed_size_hint();
     if ( $hint ) { $w = $hint[0]; $h = $hint[1]; }
     $box = $wide ? 'max-width:100%' : 'max-width:' . (int) $w . 'px';
-    return '<div class="fc-embed fc-embed--' . esc_attr( $type ) . '" style="' . $box . ';margin:0 auto;">'
+    return '<div class="fc-embed fc-embed--' . esc_attr( $type ) . '" style="' . $box . ';margin:1.5em auto;">'
         . '<div style="position:relative;width:100%;aspect-ratio:' . (int) $w . '/' . (int) $h . ';">'
         . '<iframe src="' . esc_url( $src ) . '" title="' . esc_attr( ucfirst( $type ) ) . '" width="' . (int) $w . '" height="' . (int) $h . '"'
         . ' style="position:absolute;inset:0;width:100%;height:100%;border:0;" loading="lazy"'
@@ -280,6 +280,13 @@ function fc_embed_handler( $matches, $attr, $url, $rawattr ) {
     $html = fc_embed_html( $url );
     return $html !== '' ? $html : false;
 }
+
+
+// One standard line of space above and below every player. Articles saved
+// before this was added carry the old inline style, so it is corrected here.
+add_action( 'wp_head', function () {
+    if ( is_singular() ) echo '<style>.fc-embed[style*="margin:0 auto"]{margin-top:1.5em !important;margin-bottom:1.5em !important}</style>' . "\n";
+} );
 
 
 // ── Turning the pasted article into embeds ───────────────────────────────────
@@ -624,7 +631,7 @@ add_filter( 'wp_insert_post_data', 'fc_embed_restore', 5 );
 
 /** The exact markup fc_embed_frame() writes. */
 function fc_embed_frame_pattern() {
-    return '#<div class="fc-embed fc-embed--([a-z]+)" style="max-width:(100%|\d+px);margin:0 auto;"><div style="position:relative;width:100%;aspect-ratio:(\d+)/(\d+);"><iframe src="([^"]+)"[^>]*></iframe></div></div>#';
+    return '#<div class="fc-embed fc-embed--([a-z]+)" style="max-width:(100%|\d+px);margin:(?:0|1\.5em) auto;"><div style="position:relative;width:100%;aspect-ratio:(\d+)/(\d+);"><iframe src="([^"]+)"[^>]*></iframe></div></div>#';
 }
 
 function fc_embed_protect( $content ) {

@@ -3,7 +3,7 @@
  * Plugin Name:       FactCrescendo Publisher
  * Plugin URI:        https://github.com/lemoonrick/factcrescendo-publisher
  * Description:       Publishing tools for fact-checking sites: fact-check fields, a branded fact card, stamped featured images, a WhatsApp banner, Google fact-check data, and automatic embeds for links pasted from Google Docs.
- * Version:           4.9.0
+ * Version:           4.9.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            FactCrescendo
@@ -16,7 +16,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'FC_PUBLISHER_VERSION', '4.9.0' );
+define( 'FC_PUBLISHER_VERSION', '4.9.1' );
 define( 'FC_PUBLISHER_FILE', __FILE__ );
 define( 'FC_PUBLISHER_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FC_PUBLISHER_URL', plugin_dir_url( __FILE__ ) );
