@@ -52,7 +52,10 @@ on every site and finds its own settings by web address.
    (`npx @wp-playground/cli@3.1.55 server --mount "$PWD:/wordpress/wp-content/plugins/factcrescendo-publisher" --blueprint <file>`),
    make test posts (fields `fc_is_fact_check`=1, `fc_rating`, `fc_claim`, `fc_fact`, a featured image),
    screenshot at phone, tablet and wide widths, and look at the pictures.
-3. Put temporary files in the scratchpad folder, never in the project.
+3. Changes to `assets/editor-panel.js` (or anything the block editor runs) must also be tried in the real
+   editor in Playground with a long, freshly pasted draft: save three times, type, reload. PHP tests cannot
+   see editor freezes. Never read from the editor's data store inside a `wp.data.subscribe` listener.
+4. Put temporary files in the scratchpad folder, never in the project.
 
 ## Releasing (see RELEASING.md)
 1. Change the version in both places in `factcrescendo-publisher.php`. Small change = patch bump (4.7.6 -> 4.7.7).

@@ -290,35 +290,58 @@
      * The editor would otherwise keep showing the article as it was pasted,
      * so the saved version is loaded back in, and saved once more so the
      * editor doesn't think there are unsaved changes.
+     *
+     * Careful with the listener below: it runs on EVERY change in the editor.
+     * It only notes that a save finished, then leaves; the real work happens
+     * afterwards, outside the listener, and reads the saved article straight
+     * from the server. (Reading it through the editor's own store from inside
+     * the listener made the store notify the listener again, without end.)
      */
     ( function () {
-        if ( ! wp.blocks || ! wp.blocks.parse ) return;
-        var wasSaving = false, resaving = false;
+        if ( ! wp.blocks || ! wp.blocks.parse || ! wp.apiFetch ) return;
+        var wasSaving = false, resaving = false, busy = false;
+        var bases = { post: 'posts', page: 'pages' };
+
+        function names( blocks ) { return blocks.map( function ( b ) { return b.name; } ).join( ',' ); }
+
+        function showSaved( type, id ) {
+            return wp.apiFetch( { path: '/wp/v2/' + bases[ type ] + '/' + id + '?context=edit&_fields=content' } ).then( function ( r ) {
+                var saved = r && r.content && r.content.raw;
+                if ( typeof saved !== 'string' ) return;
+                var theirs = wp.blocks.parse( saved );
+                // Only when the plugin really changed the article (blocks added, replaced or deleted).
+                if ( names( wp.data.select( 'core/block-editor' ).getBlocks() ) === names( theirs ) ) return;
+
+                wp.data.dispatch( 'core/block-editor' ).resetBlocks( theirs );
+                if ( wp.data.select( 'core/notices' ) ) {
+                    wp.data.dispatch( 'core/notices' ).createInfoNotice( 'Links turned into embeds and author notes removed.', { type: 'snackbar' } );
+                }
+                if ( wp.data.select( 'core/editor' ).isEditedPostDirty() ) {
+                    resaving = true;
+                    wp.data.dispatch( 'core/editor' ).savePost();
+                }
+            } );
+        }
 
         wp.data.subscribe( function () {
             var ed = wp.data.select( 'core/editor' );
-            if ( ! ed ) return;
-            var saving = ed.isSavingPost() && ! ed.isAutosavingPost();
+            if ( ! ed || ! ed.isSavingPost ) return;
 
-            if ( wasSaving && ! saving && ed.didPostSaveRequestSucceed() ) {
-                if ( resaving ) { resaving = false; wasSaving = saving; return; }
-                var record = wp.data.select( 'core' ).getEntityRecord( 'postType', ed.getCurrentPostType(), ed.getCurrentPostId() );
-                var saved  = record && record.content && record.content.raw;
-                var mine   = wp.data.select( 'core/block-editor' ).getBlocks().map( function ( b ) { return b.name; } ).join( ',' );
-                var theirs = typeof saved === 'string' ? wp.blocks.parse( saved ).map( function ( b ) { return b.name; } ).join( ',' ) : mine;
-                // Only when the plugin really changed the article (blocks added, replaced or deleted).
-                if ( mine !== theirs ) {
-                    wp.data.dispatch( 'core/editor' ).resetEditorBlocks( wp.blocks.parse( saved ), { __unstableShouldCreateUndoLevel: false } );
-                    if ( wp.data.select( 'core/notices' ) ) {
-                        wp.data.dispatch( 'core/notices' ).createInfoNotice( 'Links turned into embeds and author notes removed.', { type: 'snackbar' } );
-                    }
-                    if ( wp.data.select( 'core/editor' ).isEditedPostDirty() ) {
-                        resaving = true;
-                        wp.data.dispatch( 'core/editor' ).savePost();
-                    }
-                }
-            }
-            wasSaving = saving;
+            var saving    = ed.isSavingPost() && ! ed.isAutosavingPost();
+            var justSaved = wasSaving && ! saving;
+            wasSaving = saving; // first, so nothing below can make this run twice
+
+            if ( ! justSaved || busy || ! ed.didPostSaveRequestSucceed() ) return;
+            if ( resaving ) { resaving = false; return; }
+
+            var type = ed.getCurrentPostType();
+            if ( ! bases[ type ] ) return;
+
+            var id = ed.getCurrentPostId();
+            busy = true;
+            setTimeout( function () {
+                showSaved( type, id ).catch( function () {} ).then( function () { busy = false; } );
+            }, 0 );
         } );
     } )();
 

@@ -438,7 +438,7 @@ function fc_enqueue_editor_panel() {
     wp_enqueue_script(
         'fc-editor-panel',
         FC_PUBLISHER_URL . 'assets/editor-panel.js',
-        [ 'wp-plugins', 'wp-element', 'wp-data', 'wp-components', 'wp-editor', 'wp-block-editor', 'wp-core-data' ],
+        [ 'wp-plugins', 'wp-element', 'wp-data', 'wp-components', 'wp-editor', 'wp-block-editor', 'wp-core-data', 'wp-blocks', 'wp-api-fetch', 'wp-notices' ],
         fc_asset_version( 'assets/editor-panel.js' ),
         true
     );
