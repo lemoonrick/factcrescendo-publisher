@@ -7,8 +7,8 @@ WhatsApp banner, Google fact-check data and audio player. One copy of the plugin
 on every site and finds its own settings by web address.
 
 ## How to work with the owner
-- The owner is learning and is not a developer. Explain in plain, short, non-technical words.
-- Give numbered step-by-step instructions whenever the owner has to do something.
+- The owner is an experienced developer who uses AI for development work. Plain, short wording is a preference for clarity, not a sign that the concepts are unfamiliar. Technical detail is welcome when it helps a decision.
+- When something has to be done by hand, give clear numbered steps.
 - Always end with: current status, and next steps.
 - Be honest about problems and risks. Never say "done" without having tested it.
 - Ask before anything hard to undo: pushing, tagging, deleting files, changing GitHub.
