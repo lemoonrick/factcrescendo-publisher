@@ -277,18 +277,21 @@ function fc_featured_make( $post_id, $source_id, $stamp_file, $badge ) {
     $uploads = wp_upload_dir();
     if ( ! empty( $uploads['error'] ) ) return 0;
 
-    $name = sanitize_file_name( pathinfo( $file, PATHINFO_FILENAME ) . '-' . $badge . '.jpg' );
+    // WebP like every other photo on the site, when the server can draw it.
+    $webp = fc_webp_enabled() && fc_webp_gd();
+    $ext  = $webp ? '.webp' : '.jpg';
+    $name = sanitize_file_name( pathinfo( $file, PATHINFO_FILENAME ) . '-' . $badge . $ext );
     $name = wp_unique_filename( $uploads['path'], $name );
     $path = trailingslashit( $uploads['path'] ) . $name;
 
-    $ok = imagejpeg( $canvas, $path, 90 );
+    $ok = $webp ? imagewebp( $canvas, $path, max( 82, fc_webp_quality() ) ) : imagejpeg( $canvas, $path, 90 );
     imagedestroy( $canvas );
     imagedestroy( $photo );
     imagedestroy( $stamp );
     if ( ! $ok ) return 0;
 
     $id = wp_insert_attachment( [
-        'post_mime_type' => 'image/jpeg',
+        'post_mime_type' => $webp ? 'image/webp' : 'image/jpeg',
         'post_title'     => get_the_title( $source_id ),
         'post_status'    => 'inherit',
     ], $path, $post_id, true );

@@ -35,6 +35,8 @@ function fc_register_settings() {
     fc_register_choice( 'fc_whatsapp_banner_style', [ '', 'card', 'image', 'custom', 'off' ], '' ); // '' = not chosen yet
     fc_register_choice( 'fc_enable_audio', [ '1', '0' ], '1' );
     fc_register_choice( 'fc_auto_embeds', [ '1', '0' ], '1' );
+    fc_register_choice( 'fc_webp_uploads', [ '1', '0' ], '1' );
+    fc_register_choice( 'fc_webp_quality', [ '70', '82', '90' ], '82' );
 
     register_setting( 'fc_publisher_settings_group', 'fc_embed_notes', [
         'type'              => 'string',
@@ -239,6 +241,25 @@ function fc_render_settings_page() {
                     <?php else : ?><span class="fc-hint">No banner will show. <?php echo $banner === 'off' ? '' : 'Pick a site above, or paste your banner code.'; ?></span><?php endif; ?>
                 </div>
                 <p class="fc-hint">Preview of the saved settings. Press Save to update it.</p>
+            </div>
+
+            <div class="fc-box">
+                <h2>Images</h2>
+                <p>Every new JPEG or PNG added to the media library, including pictures pasted from a Google Doc, is saved as WebP: smaller files and faster pages. GIFs, SVGs and files that are already WebP are left alone. Pictures already on the site are never changed.</p>
+                <?php fc_settings_switch( 'fc_webp_uploads', '1', 'Save new photos as WebP', 'Free. Uses the image tools already on this server.' ); ?>
+                <div class="fc-row">
+                    <label for="fc_webp_quality">Quality</label>
+                    <select id="fc_webp_quality" name="fc_webp_quality">
+                        <?php foreach ( [ '70' => 'Smaller files', '82' => 'Balanced (recommended)', '90' => 'Sharper' ] as $value => $label ) : ?>
+                        <option value="<?php echo esc_attr( $value ); ?>" <?php selected( (string) fc_webp_quality(), $value ); ?>><?php echo esc_html( $label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php if ( fc_webp_can() ) : ?>
+                <p class="fc-hint"><span class="fc-ok">This server can make WebP.</span></p>
+                <?php else : ?>
+                <p class="fc-hint fc-warn">This server can't make WebP files, so photos are saved as they are. Ask your host to turn on WebP support in PHP (GD or Imagick).</p>
+                <?php endif; ?>
             </div>
 
             <div class="fc-box">

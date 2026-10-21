@@ -21,6 +21,7 @@ on every site and finds its own settings by web address.
 - `includes/content-injection.php` — puts card, author box, banner into the article; stamps; WhatsApp banner.
 - `includes/featured-image.php` — makes the stamped featured image (keeps the plain photo too).
 - `includes/embeds.php` — on save, rewrites a pasted article into ordinary WordPress blocks (so it works even if the plugin is removed): links and embed code → Embed / Custom HTML players (Archive.org, Awesome Screenshot, Instagram, Facebook, Vimeo, YouTube, X), our picture links → Image blocks, pasted HTML → Custom HTML block, author notes ("Embed", "side by side", list in Settings) above embeds deleted. Never touches posts published before the update reached that site.
+- `includes/images.php` — new JPEG/PNG uploads (pasted from a Doc, dragged in, REST) are converted to WebP before WordPress stores them. GIF, SVG, WebP, animated PNG are left alone; old pictures are never touched; any failure keeps the original. Quality setting in Settings.
 - `includes/seo-schema.php` — Google ClaimReview data.
 - `includes/rest-api.php` — read-only public data endpoints.
 - `includes/settings-page.php` — Settings > FC Publisher.

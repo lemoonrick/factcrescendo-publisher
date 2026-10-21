@@ -303,6 +303,95 @@ reset_options();
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+section( 'Images (WebP)' );
+
+reset_options();
+delete_option( 'fc_webp_uploads' );
+delete_option( 'fc_webp_quality' );
+
+/** A temporary picture file: 'jpeg', 'png' (transparent corner) or 'gif'. Noisy, so quality matters to its size. */
+function tmp_picture( $kind, $w = 900, $h = 600 ) {
+    $im = imagecreatetruecolor( $w, $h );
+    if ( $kind === 'png' ) { imagealphablending( $im, false ); imagesavealpha( $im, true ); imagefill( $im, 0, 0, imagecolorallocatealpha( $im, 0, 0, 0, 127 ) ); imagealphablending( $im, true ); }
+    mt_srand( 7 );
+    for ( $i = 0; $i < 3000; $i++ ) imagefilledrectangle( $im, $x = mt_rand( 40, $w - 40 ), $y = mt_rand( 40, $h - 40 ), $x + mt_rand( 2, 30 ), $y + mt_rand( 2, 30 ), imagecolorallocate( $im, mt_rand( 0, 255 ), mt_rand( 0, 255 ), mt_rand( 0, 255 ) ) );
+    $path = trailingslashit( get_temp_dir() ) . 'fc-test-' . wp_generate_password( 8, false ) . ( $kind === 'jpeg' ? '.jpg' : '.' . $kind );
+    $kind === 'jpeg' ? imagejpeg( $im, $path, 92 ) : ( $kind === 'png' ? imagepng( $im, $path ) : imagegif( $im, $path ) );
+    return $path;
+}
+function sideload_file( $path ) {
+    $file = [ 'name' => basename( $path ), 'tmp_name' => $path, 'error' => 0, 'size' => filesize( $path ) ];
+    return wp_handle_sideload( $file, [ 'test_form' => false ] );
+}
+
+check( 'this server can make WebP (needed for the checks below)', fc_webp_can() && fc_webp_gd() );
+
+$jpg   = tmp_picture( 'jpeg' );
+$orig  = filesize( $jpg );
+$up    = sideload_file( $jpg );
+check( 'a JPEG is saved as WebP', ( $up['type'] ?? '' ) === 'image/webp' && substr( $up['file'] ?? '', -5 ) === '.webp' && is_readable( $up['file'] ) && substr( $up['url'], -5 ) === '.webp' );
+check( 'the original JPEG is gone, only the WebP is kept', ! file_exists( preg_replace( '/\.webp$/', '.jpg', $up['file'] ) ) );
+$wi = getimagesize( $up['file'] );
+check( 'the WebP has the same size and is smaller than the JPEG', $wi[0] === 900 && $wi[1] === 600 && $wi['mime'] === 'image/webp' && filesize( $up['file'] ) < $orig, filesize( $up['file'] ) . ' vs ' . $orig );
+
+$png = sideload_file( tmp_picture( 'png' ) );
+$px  = imagecreatefromwebp( $png['file'] );
+check( 'a transparent PNG keeps its transparency as WebP', ( $png['type'] ?? '' ) === 'image/webp' && ( ( imagecolorat( $px, 5, 5 ) >> 24 ) & 127 ) > 100 );
+
+$gif = sideload_file( tmp_picture( 'gif' ) );
+check( 'a GIF is left alone (it may be animated)', ( $gif['type'] ?? '' ) === 'image/gif' && substr( $gif['file'], -4 ) === '.gif' );
+
+$again = sideload_file( $png['file'] );
+check( 'a file that is already WebP is left alone', ( $again['type'] ?? '' ) === 'image/webp' );
+
+// A real media-library item: its sizes are WebP too.
+require_once ABSPATH . 'wp-admin/includes/image.php';
+require_once ABSPATH . 'wp-admin/includes/media.php';
+$sl  = [ 'name' => 'pasted-from-docs.jpg', 'tmp_name' => tmp_picture( 'jpeg', 1600, 1000 ), 'error' => 0 ];
+$att = media_handle_sideload( $sl, 0 );
+$am  = is_wp_error( $att ) ? [] : wp_get_attachment_metadata( $att );
+check( 'in the media library it is a WebP item', ! is_wp_error( $att ) && get_post_mime_type( $att ) === 'image/webp' && substr( get_attached_file( $att ), -5 ) === '.webp', is_wp_error( $att ) ? $att->get_error_message() : '' );
+check( 'its smaller sizes are WebP too', ! empty( $am['sizes']['thumbnail']['file'] ) && substr( $am['sizes']['thumbnail']['file'], -5 ) === '.webp' && ( $am['sizes']['thumbnail']['mime-type'] ?? '' ) === 'image/webp', wp_json_encode( $am['sizes']['thumbnail'] ?? null ) );
+check( 'the article gets the WebP address', substr( wp_get_attachment_url( $att ), -5 ) === '.webp' );
+
+update_option( 'fc_webp_quality', '70' );  $small = sideload_file( tmp_picture( 'jpeg' ) );
+update_option( 'fc_webp_quality', '90' );  $sharp = sideload_file( tmp_picture( 'jpeg' ) );
+check( 'the quality setting changes the file size', filesize( $small['file'] ) < filesize( $sharp['file'] ), filesize( $small['file'] ) . ' vs ' . filesize( $sharp['file'] ) );
+delete_option( 'fc_webp_quality' );
+fc_register_settings();
+check( 'an odd quality value falls back to the default', apply_filters( 'sanitize_option_fc_webp_quality', '55' ) === '82' && apply_filters( 'sanitize_option_fc_webp_uploads', 'x' ) === '1' );
+
+// Servers that only have PHP's own GD tools (no Imagick) work too.
+add_filter( 'wp_image_editors', $only_gd = function () { return [ 'WP_Image_Editor_GD' ]; } );
+update_option( 'fc_webp_quality', '70' );  $gd_small = sideload_file( tmp_picture( 'jpeg' ) );
+update_option( 'fc_webp_quality', '90' );  $gd_sharp = sideload_file( tmp_picture( 'jpeg' ) );
+check( 'with GD only: converts to WebP and the quality setting applies', ( $gd_small['type'] ?? '' ) === 'image/webp' && filesize( $gd_small['file'] ) < filesize( $gd_sharp['file'] ) );
+delete_option( 'fc_webp_quality' );
+remove_filter( 'wp_image_editors', $only_gd );
+
+update_option( 'fc_webp_uploads', '0' );
+$off = sideload_file( tmp_picture( 'jpeg' ) );
+check( 'switched off in Settings: photos stay as they are', ( $off['type'] ?? '' ) === 'image/jpeg' && substr( $off['file'], -4 ) === '.jpg' );
+delete_option( 'fc_webp_uploads' );
+
+// Never breaks an upload.
+$junk = trailingslashit( get_temp_dir() ) . 'junk.jpg'; file_put_contents( $junk, 'not a picture' );
+check( 'a file that is not really a picture is left for WordPress to handle', fc_webp_convert( $junk, 'image/jpeg' ) === '' && file_exists( $junk ) );
+$keep = [ 'error' => 'Sorry, something went wrong.' ];
+check( 'a failed upload is passed on untouched', fc_webp_on_upload( $keep ) === $keep );
+
+$apng = tmp_picture( 'png' );
+$data = file_get_contents( $apng );
+$chunk = pack( 'N', 8 ) . 'acTL' . pack( 'N2', 2, 0 ) . pack( 'N', crc32( 'acTL' . pack( 'N2', 2, 0 ) ) );
+file_put_contents( $apng, substr( $data, 0, 33 ) . $chunk . substr( $data, 33 ) );
+check( 'an animated PNG is left alone', fc_webp_convert( $apng, 'image/png' ) === '' );
+
+$none = [ 'file' => $jpg, 'url' => 'http://x/y.jpg', 'type' => 'image/jpeg' ];
+add_filter( 'wp_image_editors', '__return_empty_array' );
+check( 'a server without WebP support keeps the original', fc_webp_on_upload( $none ) === $none );
+remove_filter( 'wp_image_editors', '__return_empty_array' );
+
+// ─────────────────────────────────────────────────────────────────────────────
 section( 'Featured image stamp' );
 
 reset_options();
@@ -327,9 +416,10 @@ check( 'the plain photo is kept', get_post( $plain_photo ) && (int) get_post_met
 check( 'fact card uses the plain photo, not the stamped one', fc_card_photo_id( $pid ) === $plain_photo && strpos( render( $pid ), 'plain' ) !== false );
 
 // The stamp really is drawn: the bottom-left corner is no longer plain blue.
-$im  = imagecreatefromjpeg( get_attached_file( $thumb ) );
+$im  = imagecreatefromstring( file_get_contents( get_attached_file( $thumb ) ) );
 $rgb = imagecolorat( $im, 104 + 150, 768 - 128 - 125 );
 check( 'stamp is drawn in the corner', ( ( $rgb >> 16 ) & 255 ) > 150, dechex( $rgb ) );
+check( 'the stamped featured image is a WebP file like every other photo', get_post_mime_type( $thumb ) === 'image/webp' && substr( get_attached_file( $thumb ), -5 ) === '.webp' );
 
 check( 'saving again does not make another copy', save_rest( $pid, [ 'title' => 'Again' ] ) === $thumb );
 
