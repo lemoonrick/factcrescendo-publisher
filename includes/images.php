@@ -68,6 +68,7 @@ function fc_webp_on_upload( $upload ) {
     } catch ( \Throwable $e ) {
         $new = '';
     }
+    unset( $GLOBALS['fc_webp_converting'] ); // never left on, whatever happened above
     ob_end_clean();
     if ( $new === '' ) return $upload;
 
@@ -78,6 +79,19 @@ function fc_webp_on_upload( $upload ) {
     return $upload;
 }
 
+/**
+ * Whether a picture this size can be opened with the memory this request has left.
+ * Running out of memory can't be caught, it ends the upload, so a tight server keeps the original instead.
+ */
+function fc_webp_fits_memory( $width, $height ) {
+    $limit = wp_convert_hr_to_bytes( (string) ini_get( 'memory_limit' ) );
+    if ( $limit <= 0 ) return true; // no limit
+    $left = $limit - memory_get_usage();
+    /** Filter: how many bytes of memory a picture needs per pixel. About 4 to open, a little more to save. */
+    $need = $width * $height * (float) apply_filters( 'fc_webp_bytes_per_pixel', 5 );
+    return $need < $left;
+}
+
 /** Makes the WebP copy next to the original. Returns its path, or '' to keep the original. */
 function fc_webp_convert( $file, $type ) {
     if ( ! is_readable( $file ) ) return '';
@@ -85,6 +99,7 @@ function fc_webp_convert( $file, $type ) {
     $info = @getimagesize( $file );
     if ( ! $info || $info[0] < 1 || $info[1] < 1 ) return '';
     if ( $info[0] * $info[1] > 40000000 || filesize( $file ) > 30 * MB_IN_BYTES ) return ''; // too big to convert safely
+    if ( ! fc_webp_fits_memory( $info[0], $info[1] ) ) return ''; // the server could run out of memory
 
     // An animated PNG would lose its animation.
     if ( $type === 'image/png' && strpos( (string) file_get_contents( $file, false, null, 0, 4096 ), 'acTL' ) !== false ) return '';

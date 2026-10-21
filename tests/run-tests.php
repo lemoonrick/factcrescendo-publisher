@@ -386,6 +386,14 @@ $chunk = pack( 'N', 8 ) . 'acTL' . pack( 'N2', 2, 0 ) . pack( 'N', crc32( 'acTL'
 file_put_contents( $apng, substr( $data, 0, 33 ) . $chunk . substr( $data, 33 ) );
 check( 'an animated PNG is left alone', fc_webp_convert( $apng, 'image/png' ) === '' );
 
+check( 'a picture too big for the memory this request has is left alone', fc_webp_fits_memory( 800, 600 ) && ! fc_webp_fits_memory( 20000, 20000 ) );
+add_filter( 'fc_webp_bytes_per_pixel', $huge = function () { return 100000; } );
+check( 'a tight server keeps the original instead of risking the upload', fc_webp_convert( $jpg, 'image/jpeg' ) === '' );
+remove_filter( 'fc_webp_bytes_per_pixel', $huge );
+add_filter( 'fc_webp_bytes_per_pixel', $boom = function () { throw new Exception( 'boom' ); } );
+fc_webp_on_upload( [ 'file' => $jpg, 'url' => 'http://x/y.jpg', 'type' => 'image/jpeg' ] );
+remove_filter( 'fc_webp_bytes_per_pixel', $boom );
+check( 'an error while converting never leaves the quality override switched on', empty( $GLOBALS['fc_webp_converting'] ) );
 $none = [ 'file' => $jpg, 'url' => 'http://x/y.jpg', 'type' => 'image/jpeg' ];
 add_filter( 'wp_image_editors', '__return_empty_array' );
 check( 'a server without WebP support keeps the original', fc_webp_on_upload( $none ) === $none );
