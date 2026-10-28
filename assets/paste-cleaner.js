@@ -12,6 +12,10 @@
  *                                        the writer's computer). Pictures that
  *                                        can't be read are reported, never
  *                                        silently lost.
+ *   - Pictures put side by side in a table, or next to each other in a line
+ *                                      → rows of pictures (Columns blocks), at
+ *                                        most 3 to a row, nothing cropped. A
+ *                                        table with words in it is left alone.
  *   - Lines glued together, blank lines, no-break spaces and other leftovers
  *                                      → one line becomes one paragraph; empty
  *                                        paragraphs and stray spaces are removed.
@@ -97,10 +101,40 @@
             if ( /^(v|w|x|st1):/.test( n ) ) el.parentNode.removeChild( el ); else unwrap( el );
         } );
 
+        // Tables. Writers put pictures side by side in a table. A table that holds only
+        // pictures becomes rows of pictures; any table with words in it is left exactly as
+        // it is, pictures included.
+        var group = 0;
+        Array.prototype.slice.call( body.querySelectorAll( 'table' ) ).forEach( function ( table ) {
+            if ( ! table.querySelector( 'img' ) || ! table.parentNode ) return;
+            if ( ! onlySpace( table.textContent ) ) {
+                Array.prototype.forEach.call( table.querySelectorAll( 'img' ), function ( img ) { img.setAttribute( 'data-fc-skip', '1' ); } );
+                return;
+            }
+            var marks = [];
+            Array.prototype.forEach.call( table.querySelectorAll( 'tr' ), function ( tr ) {
+                var row = Array.prototype.filter.call( tr.querySelectorAll( 'img' ), function ( img ) {
+                    var w = parseInt( img.getAttribute( 'width' ) || '0', 10 ), h = parseInt( img.getAttribute( 'height' ) || '0', 10 );
+                    return img.getAttribute( 'src' ) && ! ( ( w && w <= 2 ) || ( h && h <= 2 ) );
+                } );
+                if ( ! row.length ) return;
+                group++;
+                row.forEach( function ( img ) {
+                    var index = out.images.length;
+                    out.images.push( { src: img.getAttribute( 'src' ), alt: img.getAttribute( 'alt' ) || '', group: group } );
+                    var mk = doc.createElement( 'p' );
+                    mk.textContent = '@@FCIMG:' + index + ':' + group + '@@';
+                    marks.push( mk );
+                } );
+            } );
+            marks.forEach( function ( mk ) { table.parentNode.insertBefore( mk, table ); } );
+            table.parentNode.removeChild( table );
+        } );
+
         // Pictures. First look at all of them while the page is untouched: which are
         // spacers, which repeat the one before, which sit side by side. Then replace.
-        var imgs = Array.prototype.slice.call( body.querySelectorAll( 'img' ) );
-        var plan = [], prev = null, group = 0, lastKey = null;
+        var imgs = Array.prototype.slice.call( body.querySelectorAll( 'img:not([data-fc-skip])' ) );
+        var plan = [], prev = null, lastKey = null;
         imgs.forEach( function ( img ) {
             var src = img.getAttribute( 'src' ) || '';
             var w = parseInt( img.getAttribute( 'width' ) || '0', 10 );
@@ -141,6 +175,7 @@
             if ( onlySpace( p.textContent ) && ! p.querySelector( 'img,iframe' ) ) p.parentNode.removeChild( p );
         } );
 
+        Array.prototype.forEach.call( body.querySelectorAll( '[data-fc-skip]' ), function ( img ) { img.removeAttribute( 'data-fc-skip' ); } );
         out.html = body.innerHTML;
         return out;
     }
@@ -284,6 +319,17 @@
         if ( n && n.createNotice ) n.createNotice( 'warning', text, { isDismissible: true } );
     }
 
+    /** Splits pictures into rows of at most 3, never leaving one alone on the last row (4 → 2+2, 7 → 3+2+2). */
+    function rows( list ) {
+        var out = [], i = 0, n = list.length;
+        while ( i < n ) {
+            var left = n - i, take = left === 4 ? 2 : Math.min( 3, left );
+            out.push( list.slice( i, i + take ) );
+            i += take;
+        }
+        return out;
+    }
+
     function imageBlock( r ) {
         return wp.blocks.createBlock( 'core/image', { id: r.id || undefined, url: r.url, alt: r.alt || '', sizeSlug: 'large', linkDestination: 'none' } );
     }
@@ -308,6 +354,14 @@
         // A plain sentence or two with nothing to fix: WordPress handles those fine.
         if ( ! items.length ) return null;
         if ( ! pre.images.length && items.length === 1 && items[ 0 ].block && items[ 0 ].block.name === 'core/paragraph' && ! stats.tidied ) return null;
+
+        // Safety: every picture place-holder must have become its own paragraph. If one ended
+        // up anywhere else (inside a table, a list, a quote...), the picture would be lost, so
+        // the whole paste is left to WordPress instead.
+        var markers = items.filter( function ( it ) { return it.marker; } ).length;
+        var leaked  = wp.blocks.serialize( items.filter( function ( it ) { return it.block; } ).map( function ( it ) { return it.block; } ) ).indexOf( '@@FCIMG' ) !== -1;
+        if ( leaked || markers !== pre.images.length ) return null;
+
         return { pre: pre, items: items, stats: stats };
     }
 
@@ -359,9 +413,13 @@
                 if ( good.length === 1 ) {
                     dp.replaceBlocks( first, imageBlock( good[ 0 ].r ) );
                 } else {
-                    // Pictures that were side by side in the document stay side by side.
-                    var gallery = wp.blocks.createBlock( 'core/gallery', { columns: Math.min( good.length, 3 ), linkTo: 'none' }, good.map( function ( x ) { return imageBlock( x.r ); } ) );
-                    dp.replaceBlocks( first, gallery );
+                    // Pictures that were side by side in the document stay side by side:
+                    // Columns blocks, at most 3 pictures to a row, nothing cropped.
+                    dp.replaceBlocks( first, rows( good.map( function ( x ) { return x.r; } ) ).map( function ( row ) {
+                        return wp.blocks.createBlock( 'core/columns', {}, row.map( function ( r ) {
+                            return wp.blocks.createBlock( 'core/column', {}, [ imageBlock( r ) ] );
+                        } ) );
+                    } ) );
                 }
                 var rest = holderIds.filter( function ( id ) { return id !== first; } );
                 if ( rest.length ) dp.removeBlocks( rest, false );

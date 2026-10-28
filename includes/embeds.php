@@ -416,7 +416,8 @@ function fc_embed_default_notes() {
         . "image\nimages\nphoto\nphotos\nscreenshot\nscreenshots\nvideo\nlink\nlink here\n"
         . "archive\narchive link\narchive links\narchive url\narchive here\narchive embed\narchive video\narchive version\n"
         . "archived\narchived link\narchived video\narchived version\narchive.org\narchive.org link\narchive.org video\n"
-        . "link to archive\nlink of archive\narchive of the video\narchive of the post";
+        . "link to archive\nlink of archive\narchive of the video\narchive of the post\n"
+        . "production note*";
 }
 
 /** The list that shipped before the Archive words were added. A site still on it gets the new default. */
@@ -430,14 +431,42 @@ function fc_embed_previous_default_notes() {
 /** The note list as saved in Settings; a list nobody has changed follows the plugin's default. */
 function fc_embed_notes_text() {
     $saved = get_option( 'fc_embed_notes', false );
-    if ( $saved === false || trim( (string) $saved ) === '' || trim( (string) $saved ) === trim( fc_embed_previous_default_notes() ) ) return fc_embed_default_notes();
+    $old   = [ trim( fc_embed_previous_default_notes() ), trim( preg_replace( '/\nproduction note\*$/', '', fc_embed_default_notes() ) ) ];
+    if ( $saved === false || trim( (string) $saved ) === '' || in_array( trim( (string) $saved ), $old, true ) ) return fc_embed_default_notes();
     return (string) $saved;
+}
+
+/**
+ * Lines in the list that end in * mean "any line that starts like this", e.g.
+ * "production note*" catches "[PRODUCTION NOTE: These three posts could be
+ * merged." Those are deleted wherever they stand alone, not only above an
+ * embed: no article starts a paragraph that way.
+ */
+function fc_embed_note_prefixes() {
+    $out = [];
+    foreach ( preg_split( '/\R/u', fc_embed_notes_text() ) as $line ) {
+        if ( substr( trim( $line ), -1 ) !== '*' ) continue;
+        $key = fc_embed_note_key( rtrim( trim( $line ), '*' ) );
+        if ( function_exists( 'mb_strlen' ) ? mb_strlen( $key ) >= 6 : strlen( $key ) >= 6 ) $out[] = $key;   // too short a start would catch real text
+    }
+    /** Filter: the "starts with" notes, as plain lowercase text. */
+    return apply_filters( 'fc_embed_note_prefixes', $out );
+}
+
+function fc_embed_is_prefix_note( $html ) {
+    $key = fc_embed_note_key( $html );
+    foreach ( fc_embed_note_prefixes() as $prefix ) {
+        // The whole word must match: "production note:" yes, "production notes are kept" no.
+        if ( strpos( $key, $prefix ) === 0 && ! preg_match( '/^[\p{L}\p{N}]/u', substr( $key, strlen( $prefix ) ) ) ) return true;
+    }
+    return false;
 }
 
 function fc_embed_notes() {
     $list  = fc_embed_notes_text();
     $words = [];
     foreach ( preg_split( '/\R/u', $list ) as $line ) {
+        if ( substr( trim( $line ), -1 ) === '*' ) continue; // a "starts with" note, see below
         $line = fc_embed_note_key( $line );
         if ( $line !== '' ) $words[ $line ] = true;
     }
@@ -573,13 +602,36 @@ function fc_embed_convert( $content ) {
         $content
     );
 
+    // A table that holds only pictures (writers use one to put pictures side by side) becomes rows of pictures.
+    $content = preg_replace_callback( '#<!-- wp:table(?:\s+\{[^\n]*?\})?\s+-->(?:(?!<!-- /wp:table -->).)*<!-- /wp:table -->#s', 'fc_embed_picture_table', $content );
+
+    // "Side by side" (or "[PRODUCTION NOTE: ... could be merged") just above two or more pictures:
+    // the pictures go side by side and the note goes.
+    $image   = '<!-- wp:image(?:\s+\{[^\n]*?\})?\s+-->(?:(?!<!-- /wp:image -->).)*<!-- /wp:image -->';
+    $content = preg_replace_callback(
+        '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*((?:' . $image . '\s*){2,})#s',
+        function ( $m ) use ( $image ) {
+            if ( ! fc_embed_is_side_note( $m[1] ) ) return $m[0];
+            preg_match_all( '#' . $image . '#s', $m[2], $all );
+            return fc_embed_columns( $all[0] ) . "\n\n";
+        },
+        $content
+    );
+
+    // "[PRODUCTION NOTE: ..." and the other "starts with" notes, wherever they stand alone.
+    $content = preg_replace_callback(
+        '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*#s',
+        function ( $m ) { return fc_embed_is_prefix_note( $m[1] ) ? '' : $m[0]; },
+        $content
+    );
+
     // Author notes ("Embed", "side by side" …) alone just above an embed or picture.
     $notes = fc_embed_notes();
     do {
         $before  = $content;
         // …also when the author typed it as code, e.g. "<p>Side by Side</p>", which became a Custom HTML block.
         $content = preg_replace_callback(
-            '#<!-- wp:html -->\s*((?:(?!<!-- /wp:html -->).)*?)\s*<!-- /wp:html -->\s*(?=<!-- wp:(?:embed|html|image|gallery|video)\b)#s',
+            '#<!-- wp:html -->\s*((?:(?!<!-- /wp:html -->).)*?)\s*<!-- /wp:html -->\s*(?=<!-- wp:(?:embed|html|image|gallery|video|columns)\b)#s',
             function ( $m ) use ( $notes ) {
                 // Only plain text in simple tags: never a player, picture or link.
                 if ( preg_match( '#<(?!/?(?:p|strong|b|em|i|span|br|h[1-6]|div)\b)#i', $m[1] ) ) return $m[0];
@@ -588,7 +640,7 @@ function fc_embed_convert( $content ) {
             $content
         );
         $content = preg_replace_callback(
-            '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*(?=<!-- wp:(?:embed|html|image|gallery|video)\b)#s',
+            '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*(?=<!-- wp:(?:embed|html|image|gallery|video|columns)\b)#s',
             function ( $m ) use ( $notes ) {
                 return isset( $notes[ fc_embed_note_key( $m[1] ) ] ) ? '' : $m[0];
             },
@@ -671,6 +723,71 @@ function fc_embed_split_pictures( $m ) {
     if ( fc_embed_words( $no_pics ) !== fc_embed_words( $kept_text ) ) return $m[0];
     if ( substr_count( implode( '', $out ), '<img ' ) !== count( $cuts ) ) return $m[0];
 
+    return implode( "\n\n", $out );
+}
+
+/**
+ * True when a paragraph is an instruction to put the pictures below side by
+ * side, not a sentence of the article. It must mention side by side (or
+ * merging, together, one row ...) AND look like a note: in brackets, with the
+ * word "note", or a few words only. "The two photos below were taken together
+ * in Colombo." is a sentence, and stays.
+ */
+function fc_embed_is_side_note( $html ) {
+    $text = fc_embed_words( $html );
+    $low  = function_exists( 'mb_strtolower' ) ? mb_strtolower( $text ) : strtolower( $text );
+    if ( $low === '' || ( function_exists( 'mb_strlen' ) ? mb_strlen( $low ) : strlen( $low ) ) > 200 ) return false;
+    if ( ! preg_match( '/side[\s\-_]*by[\s\-_]*side|\bmerge[ds]?\b|\btogether\b|\b(?:same|one|single) row\b|\bin a row\b|next to each other|\bcollage\b/u', $low ) ) return false;
+    $words = count( preg_split( '/\s+/u', trim( $low ) ) );
+    return (bool) preg_match( '/^[\[\(\*\{]/u', $low ) || (bool) preg_match( '/\bnote\b/u', $low ) || $words <= 6;
+}
+
+/** Image blocks as rows of Columns blocks: at most 3 to a row, never one alone on the last row (4 → 2+2). */
+function fc_embed_columns( $images ) {
+    $rows = [];
+    $n    = count( $images );
+    for ( $i = 0; $i < $n; ) {
+        $left = $n - $i;
+        $take = $left === 4 ? 2 : min( 3, $left );
+        $rows[] = array_slice( $images, $i, $take );
+        $i += $take;
+    }
+    $out = [];
+    foreach ( $rows as $row ) {
+        $cols = [];
+        foreach ( $row as $img ) {
+            $cols[] = "<!-- wp:column -->\n<div class=\"wp-block-column\">" . trim( $img ) . "</div>\n<!-- /wp:column -->";
+        }
+        $out[] = "<!-- wp:columns -->\n<div class=\"wp-block-columns\">" . implode( "\n\n", $cols ) . "</div>\n<!-- /wp:columns -->";
+    }
+    return implode( "\n\n", $out );
+}
+
+/**
+ * A Table block that holds only pictures (no words at all) becomes rows of
+ * pictures, one row per table row. A table with any text is left alone.
+ */
+function fc_embed_picture_table( $m ) {
+    $block = $m[0];
+    if ( stripos( $block, '<img' ) === false ) return $block;
+    if ( fc_embed_words( preg_replace( '#<img\b[^>]*>#i', '', preg_replace( '#<!--.*?-->#s', '', $block ) ) ) !== '' ) return $block;
+    if ( ! preg_match_all( '#<tr\b[^>]*>(.*?)</tr>#is', $block, $trs ) ) return $block;
+
+    $out = [];
+    $count = 0;
+    foreach ( $trs[1] as $tr ) {
+        if ( ! preg_match_all( '#<img\b[^>]*>#i', $tr, $imgs ) ) continue;
+        $row = [];
+        foreach ( $imgs[0] as $tag ) {
+            // Only ordinary web addresses can be moved safely.
+            if ( ! preg_match( '#\ssrc=("|\')(https?://|/)[^"\']+\1#i', $tag ) ) return $block;
+            $row[] = fc_embed_picture_block( $tag );
+        }
+        $count += count( $row );
+        $out[]  = count( $row ) === 1 ? $row[0] : fc_embed_columns( $row );
+    }
+    // The check: every picture in the table is still there.
+    if ( $count !== preg_match_all( '#<img\b#i', $block ) ) return $block;
     return implode( "\n\n", $out );
 }
 
