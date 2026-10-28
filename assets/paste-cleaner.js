@@ -12,10 +12,14 @@
  *                                        the writer's computer). Pictures that
  *                                        can't be read are reported, never
  *                                        silently lost.
- *   - Pictures put side by side in a table, or next to each other in a line
- *                                      → rows of pictures (Columns blocks), at
- *                                        most 3 to a row, nothing cropped. A
+ *   - Pictures put side by side in a table
+ *                                      → the same rows as Columns blocks
+ *                                        (empty cells stay empty, 4+ in a row
+ *                                        go 2 to a row), nothing cropped. A
  *                                        table with words in it is left alone.
+ *                                        Pictures anywhere else stay one under
+ *                                        the other; a "side by side" note
+ *                                        above them is handled on save.
  *   - Lines glued together, blank lines, no-break spaces and other leftovers
  *                                      → one line becomes one paragraph; empty
  *                                        paragraphs and stray spaces are removed.
@@ -32,7 +36,7 @@
     if ( ! wp || ! wp.data || ! wp.blocks || ! wp.blocks.pasteHandler || ! wp.apiFetch ) return;
 
     var cfg    = window.fcPaste || {};
-    var MARK   = /^@@FCIMG:(\d+):(\d+)@@$/;
+    var MARK   = /^@@FCIMG:(\d+):(\d+):(\d+):(\d+)@@$/;   // picture, row, place in the row, places in the row
     var MAX_UP = 3;          // pictures uploaded at the same time
     var TIMEOUT = 25000;     // milliseconds to wait for one picture
 
@@ -111,19 +115,25 @@
                 Array.prototype.forEach.call( table.querySelectorAll( 'img' ), function ( img ) { img.setAttribute( 'data-fc-skip', '1' ); } );
                 return;
             }
+            // Copied row by row: a picture keeps its place in the row, an empty cell stays an empty place.
             var marks = [];
             Array.prototype.forEach.call( table.querySelectorAll( 'tr' ), function ( tr ) {
-                var row = Array.prototype.filter.call( tr.querySelectorAll( 'img' ), function ( img ) {
-                    var w = parseInt( img.getAttribute( 'width' ) || '0', 10 ), h = parseInt( img.getAttribute( 'height' ) || '0', 10 );
-                    return img.getAttribute( 'src' ) && ! ( ( w && w <= 2 ) || ( h && h <= 2 ) );
+                var places = [];
+                Array.prototype.forEach.call( tr.children, function ( cell ) {
+                    var pics = Array.prototype.filter.call( cell.querySelectorAll( 'img' ), function ( img ) {
+                        var w = parseInt( img.getAttribute( 'width' ) || '0', 10 ), h = parseInt( img.getAttribute( 'height' ) || '0', 10 );
+                        return img.getAttribute( 'src' ) && ! ( ( w && w <= 2 ) || ( h && h <= 2 ) );
+                    } );
+                    if ( ! pics.length ) places.push( null ); else pics.forEach( function ( img ) { places.push( img ); } );
                 } );
-                if ( ! row.length ) return;
+                if ( ! places.some( Boolean ) ) return;
                 group++;
-                row.forEach( function ( img ) {
+                places.forEach( function ( img, slot ) {
+                    if ( ! img ) return;
                     var index = out.images.length;
                     out.images.push( { src: img.getAttribute( 'src' ), alt: img.getAttribute( 'alt' ) || '', group: group } );
                     var mk = doc.createElement( 'p' );
-                    mk.textContent = '@@FCIMG:' + index + ':' + group + '@@';
+                    mk.textContent = '@@FCIMG:' + index + ':' + group + ':' + slot + ':' + places.length + '@@';
                     marks.push( mk );
                 } );
             } );
@@ -149,7 +159,7 @@
                 together = onlySpace( r.toString() );
             }
             if ( together && normSrc( src ) === lastKey ) { out.stats.duplicates++; plan.push( { img: img, drop: true } ); prev = img; return; }
-            if ( ! together ) group++;
+            group++;   // each picture on its own: pictures go side by side only for a table or a "side by side" note (on save)
             lastKey = normSrc( src );
             prev = img;
             plan.push( { img: img, src: src, alt: img.getAttribute( 'alt' ) || '', group: group } );
@@ -159,7 +169,7 @@
             if ( it.drop ) { img.parentNode.removeChild( img ); return; }
             var index  = out.images.length;
             out.images.push( { src: it.src, alt: it.alt, group: it.group } );
-            var marker = '@@FCIMG:' + index + ':' + it.group + '@@';
+            var marker = '@@FCIMG:' + index + ':' + it.group + ':0:1@@';
             var p = img.closest( 'p' );
             if ( p ) {
                 splitAround( p, img, marker );
@@ -205,7 +215,7 @@
             if ( b.name === 'core/paragraph' ) {
                 var content = cleanInline( b.attributes.content );
                 var m = MARK.exec( plain( content ) );
-                if ( m ) { out.push( { marker: { index: +m[ 1 ], group: +m[ 2 ] } } ); return; }
+                if ( m ) { out.push( { marker: { index: +m[ 1 ], group: +m[ 2 ], slot: +m[ 3 ], places: +m[ 4 ] } } ); return; }
                 var lines = splitLines( content );
                 if ( lines.length !== 1 || lines[ 0 ] !== b.attributes.content ) stats.tidied++;
                 lines.forEach( function ( line ) {
@@ -319,13 +329,14 @@
         if ( n && n.createNotice ) n.createNotice( 'warning', text, { isDismissible: true } );
     }
 
-    /** Splits pictures into rows of at most 3, never leaving one alone on the last row (4 → 2+2, 7 → 3+2+2). */
-    function rows( list ) {
-        var out = [], i = 0, n = list.length;
-        while ( i < n ) {
-            var left = n - i, take = left === 4 ? 2 : Math.min( 3, left );
-            out.push( list.slice( i, i + take ) );
-            i += take;
+    /** Places in a row: up to 3 stay in one row; 4 or more go 2 to a row, the last one padded so all are the same size. */
+    function rows( places ) {
+        if ( places.length <= 3 ) return [ places ];
+        var out = [];
+        for ( var i = 0; i < places.length; i += 2 ) {
+            var row = places.slice( i, i + 2 );
+            if ( row.length === 1 ) row.push( null );
+            out.push( row );
         }
         return out;
     }
@@ -393,36 +404,46 @@
             ids.forEach( function ( id ) { ( byGroup[ holders[ id ].group ] = byGroup[ holders[ id ].group ] || [] ).push( id ); } );
 
             var missing = 0, linked = 0;
+
+            function warning( index ) {
+                missing++;
+                // Never lose a picture silently: leave a visible reminder where it belongs.
+                return wp.blocks.createBlock( 'core/paragraph', { content: '\u26a0 Picture ' + ( index + 1 ) + ' did not come across. Add it here from the Media Library.' } );
+            }
+            function result( index ) {
+                var r = results[ index ];
+                if ( ! r || r.failed ) return null;
+                if ( r.how === 'linked' ) linked++;
+                return r;
+            }
+
             Object.keys( byGroup ).forEach( function ( g ) {
                 var holderIds = byGroup[ g ].filter( function ( id ) { return !! be.getBlock( id ); } );   // the writer may have deleted some
-                var good = [];
-                holderIds.forEach( function ( id ) {
-                    var r = results[ holders[ id ].index ];
-                    if ( ! r || r.failed ) {
-                        // Never lose a picture silently: leave a visible reminder where it belongs.
-                        missing++;
-                        dp.replaceBlocks( id, wp.blocks.createBlock( 'core/paragraph', { content: '\u26a0 Picture ' + ( holders[ id ].index + 1 ) + ' did not come across. Add it here from the Media Library.' } ) );
-                        return;
-                    }
-                    if ( r.how === 'linked' ) linked++;
-                    good.push( { id: id, r: r } );
-                } );
-                if ( ! good.length ) return;
+                if ( ! holderIds.length ) return;
+                var first = holders[ holderIds[ 0 ] ];
 
-                var first = good[ 0 ].id;
-                if ( good.length === 1 ) {
-                    dp.replaceBlocks( first, imageBlock( good[ 0 ].r ) );
-                } else {
-                    // Pictures that were side by side in the document stay side by side:
-                    // Columns blocks, at most 3 pictures to a row, nothing cropped.
-                    dp.replaceBlocks( first, rows( good.map( function ( x ) { return x.r; } ) ).map( function ( row ) {
-                        return wp.blocks.createBlock( 'core/columns', {}, row.map( function ( r ) {
-                            return wp.blocks.createBlock( 'core/column', {}, [ imageBlock( r ) ] );
-                        } ) );
-                    } ) );
+                if ( first.places <= 1 ) {
+                    // A picture on its own.
+                    holderIds.forEach( function ( id ) {
+                        var r = result( holders[ id ].index );
+                        dp.replaceBlocks( id, r ? imageBlock( r ) : warning( holders[ id ].index ) );
+                    } );
+                    return;
                 }
-                var rest = holderIds.filter( function ( id ) { return id !== first; } );
-                if ( rest.length ) dp.removeBlocks( rest, false );
+
+                // A row from a table of pictures: same places, empty cells stay empty.
+                var places = new Array( first.places );
+                for ( var k = 0; k < places.length; k++ ) places[ k ] = null;
+                holderIds.forEach( function ( id ) { places[ holders[ id ].slot ] = holders[ id ]; } );
+                var blocks = rows( places ).map( function ( row ) {
+                    return wp.blocks.createBlock( 'core/columns', {}, row.map( function ( h ) {
+                        if ( ! h ) return wp.blocks.createBlock( 'core/column', {}, [] );
+                        var r = result( h.index );
+                        return wp.blocks.createBlock( 'core/column', {}, [ r ? imageBlock( r ) : warning( h.index ) ] );
+                    } ) );
+                } );
+                dp.replaceBlocks( holderIds[ 0 ], blocks );
+                if ( holderIds.length > 1 ) dp.removeBlocks( holderIds.slice( 1 ), false );
             } );
 
             var parts = [], problems = [];

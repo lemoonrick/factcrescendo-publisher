@@ -875,33 +875,41 @@ check( 'left exactly as it was: a paragraph with its own alignment', get_post_fi
 $only = get_post_field( 'post_content', make_post( [], para( '<img src="https://example.com/only.png" alt="">' ) ) );
 check( 'a paragraph holding only a picture becomes just the picture', strpos( $only, '<!-- wp:image -->' ) !== false && strpos( $only, 'wp:paragraph' ) === false );
 
-// Pictures side by side: tables of pictures, and side-by-side notes.
+// Pictures side by side: ONLY a table of pictures or a "side by side" note does it.
 function img_block( $n ) { return "<!-- wp:image -->\n<figure class=\"wp-block-image\"><img src=\"https://example.com/p$n.png\" alt=\"\"/></figure>\n<!-- /wp:image -->\n"; }
+function side( $note, $n ) { $h = para( $note ); for ( $i = 1; $i <= $n; $i++ ) $h .= img_block( $i ); return get_post_field( 'post_content', make_post( [], $h . para( 'Text after.' ) ) ); }
+function layout( $html ) { preg_match_all( '#<!-- wp:columns -->(.*?)<!-- /wp:columns -->#s', $html, $rows ); return implode( ' | ', array_map( function ( $r ) { return substr_count( $r, '<!-- wp:image' ) . '/' . substr_count( $r, '<!-- wp:column -->' ); }, $rows[1] ) ); }
+
 $ptable = "<!-- wp:table -->\n<figure class=\"wp-block-table\"><table><tbody><tr><td><img src=\"https://example.com/a.png\" width=\"250\"></td><td><img src=\"https://example.com/b.png\"><br></td></tr><tr><td><img src=\"https://example.com/c.png\"></td><td></td></tr></tbody></table></figure>\n<!-- /wp:table -->\n";
 $tt = get_post_field( 'post_content', make_post( [], $ptable ) );
-check( 'a table holding only pictures becomes rows of pictures (2 side by side, then 1)', strpos( $tt, 'wp:table' ) === false && substr_count( $tt, '<!-- wp:columns -->' ) === 1 && substr_count( $tt, '<!-- wp:column -->' ) === 2 && substr_count( $tt, '<!-- wp:image' ) === 3 && strpos( $tt, 'c.png' ) > strpos( $tt, '<!-- /wp:columns -->' ) );
+check( 'a table of pictures is copied row by row (2 pictures | 1 picture and an empty place)', strpos( $tt, 'wp:table' ) === false && layout( $tt ) === '2/2 | 1/2' && substr_count( $tt, '<!-- wp:image' ) === 3, layout( $tt ) );
 $dtable = "<!-- wp:table -->\n<figure class=\"wp-block-table\"><table><tbody><tr><td>Claim</td><td><img src=\"https://example.com/a.png\"></td></tr></tbody></table></figure>\n<!-- /wp:table -->\n";
 check( 'a table with any words in it is left exactly as it is', get_post_field( 'post_content', make_post( [], $dtable ) ) === $dtable );
+
+check( '"side by side" + 2 pictures → 2 columns, note gone', layout( $x = side( 'Side by side', 2 ) ) === '2/2' && stripos( $x, 'side by side' ) === false && strpos( $x, 'Text after.' ) !== false, layout( $x ) );
+check( '"SIDE-BY-SIDE" + 3 pictures → 3 columns', layout( side( 'SIDE-BY-SIDE', 3 ) ) === '3/3' );
+check( '"side by side" + 4 pictures → 2 rows of 2', layout( side( '[Images side_by_side]', 4 ) ) === '2/2 | 2/2' );
+check( '"side by side" + 5 pictures → 2 + 2 + 1 (same size, empty place)', layout( $x = side( 'sidebyside pls', 5 ) ) === '2/2 | 2/2 | 1/2', layout( $x ) );
+check( 'a "side by side" note written in bold or with odd spacing still counts', layout( side( '<strong>Side  By   Side :</strong>', 2 ) ) === '2/2' );
+$stack = get_post_field( 'post_content', make_post( [], para( 'Some text.' ) . img_block( 1 ) . img_block( 2 ) . img_block( 3 ) ) );
+check( 'stacked pictures with no note stay stacked (no columns)', strpos( $stack, 'wp:columns' ) === false && substr_count( $stack, '<!-- wp:image' ) === 3 );
+$sentence = 'The viral image and the original are shown side by side below for comparison by our team.';
+$sx = side( $sentence, 2 );
+check( 'a real sentence saying "side by side": pictures go side by side, the sentence stays', layout( $sx ) === '2/2' && strpos( $sx, $sentence ) !== false );
+$x = get_post_field( 'post_content', make_post( [], para( 'Side by side' ) . img_block( 1 ) . para( '' ) . img_block( 2 ) ) );
+check( 'an empty line between the pictures does not stop it', layout( $x ) === '2/2' );
+check( 'a "side by side" note above a single picture makes no columns', strpos( side( 'Side by side', 1 ), 'wp:columns' ) === false );
 
 $sl = para( '<strong>[PRODUCTION NOTE: These three near-identical posts could be merged.</strong>' )
     . para( '<a href="https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-135-13.webp">https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-135-13.webp</a>' )
     . para( '<a href="https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-135-15.webp">https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-135-15.webp</a>' )
-    . para( '<a href="https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-135-12.webp">https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-135-12.webp</a>' )
     . para( 'Text after.' );
 $slc = get_post_field( 'post_content', make_post( [], $sl ) );
-check( 'Sri Lanka: "[PRODUCTION NOTE ... merged." + 3 picture links → 3 pictures in one row, note gone', substr_count( $slc, '<!-- wp:columns -->' ) === 1 && substr_count( $slc, '<!-- wp:column -->' ) === 3 && stripos( $slc, 'production note' ) === false && strpos( $slc, 'Text after.' ) !== false, $slc );
-$s4 = get_post_field( 'post_content', make_post( [], para( 'Side by Side' ) . img_block( 1 ) . img_block( 2 ) . img_block( 3 ) . img_block( 4 ) ) );
-check( '"Side by Side" above 4 pictures → two rows of 2, note gone', substr_count( $s4, '<!-- wp:columns -->' ) === 2 && substr_count( $s4, '<!-- wp:column -->' ) === 4 && stripos( $s4, 'side by side' ) === false );
-$sentence = 'The two photos below were taken together in Colombo on Monday by our reporter.';
-$keep2 = get_post_field( 'post_content', make_post( [], para( $sentence ) . img_block( 1 ) . img_block( 2 ) ) );
-check( 'a real sentence that happens to say "together" stays, and the pictures stay as they were', strpos( $keep2, $sentence ) !== false && strpos( $keep2, 'wp:columns' ) === false );
-$one = get_post_field( 'post_content', make_post( [], para( 'Side by side' ) . img_block( 1 ) . para( 'Text' ) ) );
-check( 'a side-by-side note above a single picture does not make columns', strpos( $one, 'wp:columns' ) === false );
+check( 'a production note without "side by side": the note goes, the pictures stay stacked', stripos( $slc, 'production note' ) === false && strpos( $slc, 'wp:columns' ) === false && substr_count( $slc, '<!-- wp:image' ) === 2 && strpos( $slc, 'Text after.' ) !== false );
 $pn = get_post_field( 'post_content', make_post( [], para( 'Intro.' ) . para( '[PRODUCTION NOTE: please check the photo credits]' ) . para( "Editor's note: this article was updated on 20 October." ) . para( 'Production notes are kept by the team.' ) ) );
 check( '"[PRODUCTION NOTE: ..." is deleted wherever it stands alone', stripos( $pn, 'please check the photo credits' ) === false );
-check( '…but "Editor\'s note" and ordinary sentences stay', strpos( $pn, 'Editor&#8217;s note' ) !== false || strpos( $pn, "Editor's note" ) !== false );
+check( '…but "Editor\'s note" stays', strpos( $pn, 'Editor&#8217;s note' ) !== false || strpos( $pn, "Editor's note" ) !== false );
 check( '…and a sentence that merely starts with the same words ("Production notes are kept…") stays', strpos( $pn, 'Production notes are kept by the team.' ) !== false && strpos( $pn, 'Intro.' ) !== false );
-check( 'pictures moved into columns keep their text intact around them', strpos( $slc, 'Text after.' ) !== false && substr_count( $slc, 'image-135-1' ) === 3 );
 
 check( 'Awesome Screenshot: video link with key', strpos( fc_embed_html( 'https://www.awesomescreenshot.com/video/56526199?key=dc9dbe8652de8661e10d6fb0eeee75db' ), 'embed?id=56526199&#038;shareKey=dc9dbe8652de8661e10d6fb0eeee75db' ) !== false );
 check( 'Awesome Screenshot: embed address on its own line', strpos( get_post_field( 'post_content', make_post( [], para( 'https://www.awesomescreenshot.com/embed?id=56443580&amp;shareKey=7c2f0e835e96f593fac8e1692295db68' ) ) ), 'embed?id=56443580&#038;shareKey=7c2f0e835e96f593fac8e1692295db68' ) !== false );

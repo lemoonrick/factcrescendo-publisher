@@ -605,15 +605,19 @@ function fc_embed_convert( $content ) {
     // A table that holds only pictures (writers use one to put pictures side by side) becomes rows of pictures.
     $content = preg_replace_callback( '#<!-- wp:table(?:\s+\{[^\n]*?\})?\s+-->(?:(?!<!-- /wp:table -->).)*<!-- /wp:table -->#s', 'fc_embed_picture_table', $content );
 
-    // "Side by side" (or "[PRODUCTION NOTE: ... could be merged") just above two or more pictures:
-    // the pictures go side by side and the note goes.
+    // A "side by side" note just above two or more pictures: the pictures go side by side.
+    // Nothing else puts pictures side by side.
     $image   = '<!-- wp:image(?:\s+\{[^\n]*?\})?\s+-->(?:(?!<!-- /wp:image -->).)*<!-- /wp:image -->';
+    $blank   = '<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>(?:\s|&nbsp;|<br\s*/?>)*</p>\s*<!-- /wp:paragraph -->';
     $content = preg_replace_callback(
-        '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*((?:' . $image . '\s*){2,})#s',
+        '#(<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->)\s*((?:' . $image . '\s*(?:' . $blank . '\s*)*){2,})#s',
         function ( $m ) use ( $image ) {
-            if ( ! fc_embed_is_side_note( $m[1] ) ) return $m[0];
-            preg_match_all( '#' . $image . '#s', $m[2], $all );
-            return fc_embed_columns( $all[0] ) . "\n\n";
+            if ( ! fc_embed_says_side_by_side( $m[2] ) ) return $m[0];
+            preg_match_all( '#' . $image . '#s', $m[3], $all );
+            if ( count( $all[0] ) < 2 ) return $m[0];
+            // The note goes; a real sentence that happens to say "side by side" stays.
+            $keep = fc_embed_is_side_note( $m[2] ) ? '' : $m[1] . "\n\n";
+            return $keep . fc_embed_columns( fc_embed_side_rows( $all[0] ) ) . "\n\n";
         },
         $content
     );
@@ -726,37 +730,54 @@ function fc_embed_split_pictures( $m ) {
     return implode( "\n\n", $out );
 }
 
-/**
- * True when a paragraph is an instruction to put the pictures below side by
- * side, not a sentence of the article. It must mention side by side (or
- * merging, together, one row ...) AND look like a note: in brackets, with the
- * word "note", or a few words only. "The two photos below were taken together
- * in Colombo." is a sentence, and stays.
- */
-function fc_embed_is_side_note( $html ) {
-    $text = fc_embed_words( $html );
-    $low  = function_exists( 'mb_strtolower' ) ? mb_strtolower( $text ) : strtolower( $text );
-    if ( $low === '' || ( function_exists( 'mb_strlen' ) ? mb_strlen( $low ) : strlen( $low ) ) > 200 ) return false;
-    if ( ! preg_match( '/side[\s\-_]*by[\s\-_]*side|\bmerge[ds]?\b|\btogether\b|\b(?:same|one|single) row\b|\bin a row\b|next to each other|\bcollage\b/u', $low ) ) return false;
-    $words = count( preg_split( '/\s+/u', trim( $low ) ) );
-    return (bool) preg_match( '/^[\[\(\*\{]/u', $low ) || (bool) preg_match( '/\bnote\b/u', $low ) || $words <= 6;
+/** True when the text asks for side by side, however it is written: "Side by Side", "SIDE-BY-SIDE", "side_by_side", "sidebyside" ... */
+function fc_embed_says_side_by_side( $html ) {
+    $low = function_exists( 'mb_strtolower' ) ? mb_strtolower( fc_embed_words( $html ) ) : strtolower( fc_embed_words( $html ) );
+    return strpos( preg_replace( '/[^a-z]+/', '', $low ), 'sidebyside' ) !== false;
 }
 
-/** Image blocks as rows of Columns blocks: at most 3 to a row, never one alone on the last row (4 → 2+2). */
-function fc_embed_columns( $images ) {
+/**
+ * True when that paragraph is only an instruction, so it can be deleted: a few
+ * words, in brackets, or with the word "note". "The viral image and the
+ * original are shown side by side below for comparison." is a sentence of the
+ * article: the pictures still go side by side, the sentence stays.
+ */
+function fc_embed_is_side_note( $html ) {
+    $low = function_exists( 'mb_strtolower' ) ? mb_strtolower( fc_embed_words( $html ) ) : strtolower( fc_embed_words( $html ) );
+    if ( $low === '' ) return false;
+    $words = count( preg_split( '/\s+/u', trim( $low ) ) );
+    return $words <= 6 || (bool) preg_match( '/^[\[\(\*\{]/u', $low ) || (bool) preg_match( '/\bnote\b/u', $low );
+}
+
+/** Pictures under a "side by side" note: 2 → one row of 2, 3 → one row of 3, 4 or more → 2 to a row. */
+function fc_embed_side_rows( $images ) {
+    return fc_embed_rows( $images );
+}
+
+/**
+ * Places in one row (a picture, or null for an empty place): up to 3 stay in
+ * one row; 4 or more go 2 to a row, the last one padded so every picture is
+ * the same size.
+ */
+function fc_embed_rows( $places ) {
+    if ( count( $places ) <= 3 ) return [ $places ];
     $rows = [];
-    $n    = count( $images );
-    for ( $i = 0; $i < $n; ) {
-        $left = $n - $i;
-        $take = $left === 4 ? 2 : min( 3, $left );
-        $rows[] = array_slice( $images, $i, $take );
-        $i += $take;
+    foreach ( array_chunk( $places, 2 ) as $row ) {
+        if ( count( $row ) === 1 ) $row[] = null;
+        $rows[] = $row;
     }
+    return $rows;
+}
+
+/** Rows of places as Columns blocks: one column per place, an Image block in each, empty places stay empty. */
+function fc_embed_columns( $rows ) {
     $out = [];
     foreach ( $rows as $row ) {
         $cols = [];
         foreach ( $row as $img ) {
-            $cols[] = "<!-- wp:column -->\n<div class=\"wp-block-column\">" . trim( $img ) . "</div>\n<!-- /wp:column -->";
+            $cols[] = $img === null
+                ? "<!-- wp:column -->\n<div class=\"wp-block-column\"></div>\n<!-- /wp:column -->"
+                : "<!-- wp:column -->\n<div class=\"wp-block-column\">" . trim( $img ) . "</div>\n<!-- /wp:column -->";
         }
         $out[] = "<!-- wp:columns -->\n<div class=\"wp-block-columns\">" . implode( "\n\n", $cols ) . "</div>\n<!-- /wp:columns -->";
     }
@@ -764,8 +785,10 @@ function fc_embed_columns( $images ) {
 }
 
 /**
- * A Table block that holds only pictures (no words at all) becomes rows of
- * pictures, one row per table row. A table with any text is left alone.
+ * A Table block that holds only pictures (no words at all) is copied row by
+ * row into Columns blocks: each picture keeps its place, an empty cell stays an
+ * empty place. A row with a single cell is just the picture. A table with any
+ * text is left alone.
  */
 function fc_embed_picture_table( $m ) {
     $block = $m[0];
@@ -773,21 +796,25 @@ function fc_embed_picture_table( $m ) {
     if ( fc_embed_words( preg_replace( '#<img\b[^>]*>#i', '', preg_replace( '#<!--.*?-->#s', '', $block ) ) ) !== '' ) return $block;
     if ( ! preg_match_all( '#<tr\b[^>]*>(.*?)</tr>#is', $block, $trs ) ) return $block;
 
-    $out = [];
+    $out   = [];
     $count = 0;
     foreach ( $trs[1] as $tr ) {
-        if ( ! preg_match_all( '#<img\b[^>]*>#i', $tr, $imgs ) ) continue;
-        $row = [];
-        foreach ( $imgs[0] as $tag ) {
-            // Only ordinary web addresses can be moved safely.
-            if ( ! preg_match( '#\ssrc=("|\')(https?://|/)[^"\']+\1#i', $tag ) ) return $block;
-            $row[] = fc_embed_picture_block( $tag );
+        if ( ! preg_match_all( '#<t[dh]\b[^>]*>(.*?)</t[dh]>#is', $tr, $cells ) ) continue;
+        $places = [];
+        foreach ( $cells[1] as $cell ) {
+            if ( ! preg_match_all( '#<img\b[^>]*>#i', $cell, $imgs ) ) { $places[] = null; continue; }
+            foreach ( $imgs[0] as $tag ) {
+                // Only ordinary web addresses can be moved safely.
+                if ( ! preg_match( '#\ssrc=("|\')(https?://|/)[^"\']+\1#i', $tag ) ) return $block;
+                $places[] = fc_embed_picture_block( $tag );
+                $count++;
+            }
         }
-        $count += count( $row );
-        $out[]  = count( $row ) === 1 ? $row[0] : fc_embed_columns( $row );
+        if ( ! array_filter( $places ) ) continue;
+        $out[] = count( $places ) === 1 ? $places[0] : fc_embed_columns( fc_embed_rows( $places ) );
     }
     // The check: every picture in the table is still there.
-    if ( $count !== preg_match_all( '#<img\b#i', $block ) ) return $block;
+    if ( ! $out || $count !== preg_match_all( '#<img\b#i', $block ) ) return $block;
     return implode( "\n\n", $out );
 }
 
