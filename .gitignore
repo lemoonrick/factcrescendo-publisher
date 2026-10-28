@@ -1,1 +1,12 @@
 .DS_Store
+
+# Not code: documents and notes stay on this computer, never on GitHub
+/docs/
+*.md
+*.docx
+*.doc
+*.odt
+*.rtf
+*.pdf
+*.xlsx
+*.pptx
