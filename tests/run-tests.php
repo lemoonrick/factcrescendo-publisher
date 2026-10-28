@@ -853,6 +853,28 @@ $real = get_post_field( 'post_content', make_post( [], para( esc_html( $maps ) )
 check( 'Google Maps embed code (as authors paste it) becomes a map player', strpos( $real, 'class="fc-embed fc-embed--map"' ) !== false && strpos( $real, 'google.com/maps/embed?pb=!1m16!1m11' ) !== false && strpos( $real, 'aspect-ratio:600/450' ) !== false );
 check( 'TikTok embed code becomes a tall player, without autoplay', strpos( $real, 'fc-embed--tiktok' ) !== false && strpos( $real, 'player/v1/7544423956279856392?music_info=1&#038;description=1' ) !== false && strpos( $real, 'autoplay=1' ) === false && strpos( $real, 'max-width:325px' ) !== false );
 check( 'extra attributes in a pasted map code are dropped, and a foreign address stays text', substr_count( $real, 'fc-embed--map' ) === 2 && substr_count( $real, '<iframe ' ) === 3 && strpos( $real, '<iframe src="https://evil' ) === false && preg_match( '#<iframe[^>]*\\sonload#i', $real ) === 0 && strpos( $real, '&lt;iframe src=&quot;https://evil.example.com' ) !== false );
+// Pictures stuck in a paragraph next to text (the Sri Lanka Tamil case).
+$tamil = 'மேலும் நாம் குறித்த இரு காணொளிகளை &amp; "ஆய்வு" செய்தபோது';
+$stuck = get_post_field( 'post_content', make_post( [], para( $tamil . '<br><img src="https://example.com/wp-content/uploads/tiktok.png" alt="Shop &amp; crowd" width="574" height="823" class="wp-image-77"><br><a href="https://www.tiktok.com/@x/video/1">Tiktok Link</a>' ) ) );
+check( 'a picture stuck in a paragraph gets its own block, between the text before and after', strpos( $stuck, "<!-- wp:paragraph -->\n<p>" . $tamil . "</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:image {\"id\":77} -->\n<figure class=\"wp-block-image\"><img src=\"https://example.com/wp-content/uploads/tiktok.png\" alt=\"Shop &amp; crowd\" class=\"wp-image-77\"/></figure>\n<!-- /wp:image -->\n\n<!-- wp:paragraph -->\n<p><a href=\"https://www.tiktok.com/@x/video/1\">Tiktok Link</a></p>" ) !== false, $stuck );
+check( 'the text is kept character for character (Tamil, &amp;, quotes, the link)', fc_embed_words( $stuck ) === fc_embed_words( para( $tamil . ' Tiktok Link' ) ) );
+$two = get_post_field( 'post_content', make_post( [], para( 'Before <img src="https://example.com/a.png"> middle <img src="https://example.com/b.png"> after' ) ) );
+check( 'two pictures with text between: text, picture, text, picture, text', substr_count( $two, '<!-- wp:image' ) === 2 && substr_count( $two, '<!-- wp:paragraph' ) === 3 && strpos( $two, '<p>middle</p>' ) !== false );
+$keep = [
+    'a small icon inside a sentence'   => 'I like <img src="https://example.com/i.png" width="20"> this',
+    'a picture inside a link'          => 'See <a href="https://example.com"><img src="https://example.com/a.png"></a> here',
+    'a picture inside bold text'       => '<strong>Bold <img src="https://example.com/a.png"></strong> text',
+    'a picture written into the page'  => 'Text <img src="data:image/png;base64,iVBORw0KGgo="> more',
+];
+foreach ( $keep as $label => $html ) {
+    $got = get_post_field( 'post_content', make_post( [], para( $html ) ) );
+    check( "left exactly as it was: $label", strpos( $got, '<p>' . $html . '</p>' ) !== false && strpos( $got, 'wp:image' ) === false );
+}
+$aligned = "<!-- wp:paragraph {\"align\":\"center\"} -->\n<p class=\"has-text-align-center\">Centered <img src=\"https://example.com/a.png\"> text</p>\n<!-- /wp:paragraph -->\n";
+check( 'left exactly as it was: a paragraph with its own alignment', get_post_field( 'post_content', make_post( [], $aligned ) ) === $aligned );
+$only = get_post_field( 'post_content', make_post( [], para( '<img src="https://example.com/only.png" alt="">' ) ) );
+check( 'a paragraph holding only a picture becomes just the picture', strpos( $only, '<!-- wp:image -->' ) !== false && strpos( $only, 'wp:paragraph' ) === false );
+
 check( 'Awesome Screenshot: video link with key', strpos( fc_embed_html( 'https://www.awesomescreenshot.com/video/56526199?key=dc9dbe8652de8661e10d6fb0eeee75db' ), 'embed?id=56526199&#038;shareKey=dc9dbe8652de8661e10d6fb0eeee75db' ) !== false );
 check( 'Awesome Screenshot: embed address on its own line', strpos( get_post_field( 'post_content', make_post( [], para( 'https://www.awesomescreenshot.com/embed?id=56443580&amp;shareKey=7c2f0e835e96f593fac8e1692295db68' ) ) ), 'embed?id=56443580&#038;shareKey=7c2f0e835e96f593fac8e1692295db68' ) !== false );
 check( 'Awesome Screenshot: the editor\'s Embed block takes the embed address too', ( $GLOBALS['wp_embed']->get_embed_handler_html( [], 'https://www.awesomescreenshot.com/embed?id=56443580&shareKey=7c2f0e835e96f593fac8e1692295db68' ) ?: '' ) !== '' );

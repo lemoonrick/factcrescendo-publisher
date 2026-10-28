@@ -566,6 +566,13 @@ function fc_embed_convert( $content ) {
         $content
     );
 
+    // A picture stuck inside a paragraph (pasted right next to a line of text) gets its own block.
+    $content = preg_replace_callback(
+        '#<!-- wp:paragraph(\s+\{[^\n]*?\})?\s+-->\s*(<p\b[^>]*>)((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->#s',
+        'fc_embed_split_pictures',
+        $content
+    );
+
     // Author notes ("Embed", "side by side" …) alone just above an embed or picture.
     $notes = fc_embed_notes();
     do {
@@ -590,6 +597,106 @@ function fc_embed_convert( $content ) {
     } while ( $content !== $before );
 
     return $content;
+}
+
+/**
+ * One paragraph that holds text and a picture becomes separate blocks: the
+ * text before, the picture, the text after.
+ *
+ * The article must never be hurt by this, so it is deliberately strict and
+ * leaves the paragraph exactly as it was whenever anything is unusual:
+ *   - the text is cut at the picture, never rewritten: every piece is the
+ *     original HTML, character for character, and the words before and after
+ *     are checked to be exactly the same as before;
+ *   - a small picture (an icon in a sentence, under 100 pixels) stays inline;
+ *   - a picture inside a link, bold text or any other tag is left alone;
+ *   - a paragraph with a style or alignment of its own is left alone.
+ */
+function fc_embed_split_pictures( $m ) {
+    $attrs = isset( $m[1] ) ? trim( $m[1] ) : '';
+    $open  = $m[2];
+    $inner = $m[3];
+    if ( stripos( $inner, '<img' ) === false ) return $m[0];
+    if ( $attrs !== '' || ! preg_match( '#^<p>$#i', $open ) ) return $m[0];
+
+    // Walk the tags: every picture must sit directly in the paragraph, not inside another tag.
+    $void  = [ 'br', 'img', 'wbr' ];
+    $depth = 0;
+    $cuts  = [];
+    if ( ! preg_match_all( '#<(/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*?(/?)>#', $inner, $tags, PREG_SET_ORDER | PREG_OFFSET_CAPTURE ) ) return $m[0];
+    foreach ( $tags as $t ) {
+        $name = strtolower( $t[2][0] );
+        if ( $name === 'img' ) {
+            if ( $depth !== 0 ) return $m[0];
+            $tag = $t[0][0];
+            if ( fc_embed_inline_size( $tag ) !== 0 && fc_embed_inline_size( $tag ) < 100 ) return $m[0];
+            // Only an ordinary web address: a picture written into the page itself (data:) or a
+            // file on someone's computer could not be moved safely.
+            if ( ! preg_match( '#\ssrc=("|\')(https?://|/)[^"\']+\1#i', $tag ) ) return $m[0];
+            $cuts[] = [ $t[0][1], strlen( $tag ), $tag ];
+            continue;
+        }
+        if ( in_array( $name, $void, true ) || $t[3][0] === '/' ) continue;
+        $depth += ( $t[1][0] === '/' ) ? -1 : 1;
+        if ( $depth < 0 ) return $m[0];
+    }
+    if ( ! $cuts || $depth !== 0 ) return $m[0];
+
+    // Cut the paragraph's own HTML at each picture.
+    $pieces = [];
+    $pos    = 0;
+    foreach ( $cuts as $c ) {
+        $pieces[] = [ 'text', substr( $inner, $pos, $c[0] - $pos ) ];
+        $pieces[] = [ 'img', $c[2] ];
+        $pos = $c[0] + $c[1];
+    }
+    $pieces[] = [ 'text', substr( $inner, $pos ) ];
+
+    $out = [];
+    $kept_text = '';
+    foreach ( $pieces as $piece ) {
+        if ( $piece[0] === 'img' ) {
+            $out[] = fc_embed_picture_block( $piece[1] );
+            continue;
+        }
+        // Only line breaks and spaces at the cut are dropped.
+        $text = preg_replace( '#^(?:\s|&nbsp;|<br\s*/?>)+|(?:\s|&nbsp;|<br\s*/?>)+$#i', '', $piece[1] );
+        if ( fc_embed_words( $text ) === '' ) continue;
+        $kept_text .= ' ' . $text;
+        $out[] = "<!-- wp:paragraph -->\n<p>" . $text . "</p>\n<!-- /wp:paragraph -->";
+    }
+
+    // The check: the same words, in the same order, and the same number of pictures.
+    $no_pics = preg_replace( '#<img\b[^>]*>#i', ' ', $inner );
+    if ( fc_embed_words( $no_pics ) !== fc_embed_words( $kept_text ) ) return $m[0];
+    if ( substr_count( implode( '', $out ), '<img ' ) !== count( $cuts ) ) return $m[0];
+
+    return implode( "\n\n", $out );
+}
+
+/** The words of some HTML, for comparing: no tags, no line breaks, spaces collapsed. */
+function fc_embed_words( $html ) {
+    $text = html_entity_decode( wp_strip_all_tags( preg_replace( '#<br\s*/?>#i', ' ', (string) $html ) ), ENT_QUOTES, 'UTF-8' );
+    return trim( preg_replace( '/[\s\x{00A0}]+/u', ' ', $text ) );
+}
+
+/** The width a picture asks for, in pixels (attribute or style), or 0 when it doesn't say. */
+function fc_embed_inline_size( $tag ) {
+    if ( preg_match( '#\swidth=["\']?(\d+)#i', $tag, $w ) ) return (int) $w[1];
+    if ( preg_match( '#\sstyle=["\'][^"\']*\bwidth:\s*(\d+)px#i', $tag, $w ) ) return (int) $w[1];
+    return 0;
+}
+
+/** An Image block for a picture taken out of a paragraph. Keeps its address, its description and its Media Library link. */
+function fc_embed_picture_block( $tag ) {
+    preg_match( '#\ssrc=("|\')([^"\']+)\1#i', $tag, $s );
+    $src = html_entity_decode( $s[2], ENT_QUOTES, 'UTF-8' );
+    $alt = preg_match( '#\salt=("|\')([^"\']*)\1#i', $tag, $a ) ? html_entity_decode( $a[2], ENT_QUOTES, 'UTF-8' ) : '';
+    $id  = preg_match( '#\bwp-image-(\d+)\b#', $tag, $i ) ? (int) $i[1] : 0;
+
+    $comment = $id ? '<!-- wp:image {"id":' . $id . '} -->' : '<!-- wp:image -->';
+    $class   = $id ? ' class="wp-image-' . $id . '"' : '';
+    return $comment . "\n" . '<figure class="wp-block-image"><img src="' . esc_url( $src ) . '" alt="' . esc_attr( $alt ) . '"' . $class . '/></figure>' . "\n<!-- /wp:image -->";
 }
 
 // When a post is saved. After WordPress has cleaned the content, so the

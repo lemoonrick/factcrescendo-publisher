@@ -423,6 +423,11 @@
         var frames = document.querySelectorAll( 'iframe[name="editor-canvas"]' );
         Array.prototype.forEach.call( frames, function ( f ) {
             try { attach( f.contentDocument ); } catch ( e ) {}
+            // The editor's frame can swap in a fresh page after it appears: listen on that one too.
+            if ( ! f.__fcPasteLoad ) {
+                f.__fcPasteLoad = true;
+                f.addEventListener( 'load', function () { try { attach( f.contentDocument ); } catch ( e ) {} } );
+            }
         } );
     }
 
