@@ -36,6 +36,7 @@ function fc_register_settings() {
     fc_register_choice( 'fc_enable_audio', [ '1', '0' ], '1' );
     fc_register_choice( 'fc_auto_embeds', [ '1', '0' ], '1' );
     fc_register_choice( 'fc_webp_uploads', [ '1', '0' ], '1' );
+    fc_register_choice( 'fc_clean_paste', [ '1', '0' ], '1' );
     fc_register_choice( 'fc_webp_quality', [ '70', '82', '90' ], '82' );
 
     register_setting( 'fc_publisher_settings_group', 'fc_embed_notes', [
@@ -241,6 +242,12 @@ function fc_render_settings_page() {
                     <?php else : ?><span class="fc-hint">No banner will show. <?php echo $banner === 'off' ? '' : 'Pick a site above, or paste your banner code.'; ?></span><?php endif; ?>
                 </div>
                 <p class="fc-hint">Preview of the saved settings. Press Save to update it.</p>
+            </div>
+
+            <div class="fc-box">
+                <h2>Pasting from Word, Google Docs and LibreOffice</h2>
+                <p>Cleans the pasted article as it goes in: each picture gets its own block and is added to the Media Library, repeated pictures are kept once, lines become paragraphs, and empty lines and stray spaces are removed. Pictures that were side by side in the document stay side by side.</p>
+                <?php fc_settings_switch( 'fc_clean_paste', '1', 'Clean pasted articles', 'Only pastes from these programs are touched. Text copied inside WordPress is never changed.' ); ?>
             </div>
 
             <div class="fc-box">

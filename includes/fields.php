@@ -443,6 +443,18 @@ function fc_enqueue_editor_panel() {
         true
     );
 
+    // Tidies text and pictures pasted from Word, Google Docs and LibreOffice (assets/paste-cleaner.js).
+    if ( get_option( 'fc_clean_paste', '1' ) === '1' ) {
+        wp_enqueue_script(
+            'fc-paste-cleaner',
+            FC_PUBLISHER_URL . 'assets/paste-cleaner.js',
+            [ 'wp-data', 'wp-blocks', 'wp-api-fetch', 'wp-notices' ],
+            fc_asset_version( 'assets/paste-cleaner.js' ),
+            true
+        );
+        wp_add_inline_script( 'fc-paste-cleaner', 'window.fcPaste = { on: true };', 'before' );
+    }
+
     $ratings = [];
     foreach ( fc_rating_choices() as $value => $label ) {
         $ratings[] = [ 'value' => $value, 'label' => $label ];

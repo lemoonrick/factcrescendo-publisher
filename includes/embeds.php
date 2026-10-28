@@ -123,6 +123,16 @@ function fc_embed_html( $url ) {
         return '';
     }
 
+    // Google Maps: only the embed address Google itself gives out ("Share > Embed a map")
+    if ( preg_match( '#^https://www\.google\.com/maps/embed\?pb=[A-Za-z0-9!%._~*()-]+$#', $url ) ) {
+        return fc_embed_frame( $url, 'map', 600, 450, true );
+    }
+
+    // TikTok: its player address, without the autoplay settings an author may have copied along
+    if ( preg_match( '#^https://www\.tiktok\.com/(?:player/v1|embed(?:/v2)?)/(\d{8,25})#', $url, $m ) ) {
+        return fc_embed_frame( 'https://www.tiktok.com/player/v1/' . $m[1] . '?music_info=1&description=1', 'tiktok', 325, 578 );
+    }
+
     // Instagram: /p/, /reel/, /reels/, /tv/ — tracking bits like ?igsh= dropped
     if ( preg_match( '#^https?://(?:www\.)?instagram\.com/(?:[A-Za-z0-9_.]+/)?(p|reels?|tv)/([A-Za-z0-9_-]+)#i', $url, $m ) ) {
         $kind = strtolower( $m[1] ) === 'reels' ? 'reel' : strtolower( $m[1] );
@@ -384,6 +394,8 @@ function fc_embed_src_to_url( $src ) {
     if ( strpos( $src, '//' ) === 0 ) $src = 'https:' . $src;
 
     if ( preg_match( '#^https?://(?:www\.)?(?:facebook\.com/plugins/|awesomescreenshot\.com/embed|archive\.org/embed/)#i', $src ) ) return $src;
+    if ( preg_match( '#^https://www\.google\.com/maps/embed\?pb=[A-Za-z0-9!%._~*()-]+$#', $src ) ) return $src;
+    if ( preg_match( '#^https://www\.tiktok\.com/(?:player/v1|embed(?:/v2)?)/(\d{8,25})#', $src ) ) return $src;
     if ( preg_match( '#^https?://(?:www\.)?instagram\.com/((?:p|reels?|tv)/[A-Za-z0-9_-]+)#i', $src, $m ) ) return 'https://www.instagram.com/' . $m[1] . '/';
     if ( preg_match( '#^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_-]{6,})#i', $src, $m ) ) return 'https://www.youtube.com/watch?v=' . $m[1];
     if ( preg_match( '#^https?://player\.vimeo\.com/video/(\d+)#i', $src, $m ) ) {
@@ -647,7 +659,7 @@ function fc_embed_restore( $data ) {
     $raw = preg_replace_callback( '#<!-- fc-embed ([A-Za-z0-9+/=]+) -->#', function ( $m ) {
         $v = json_decode( (string) base64_decode( $m[1], true ), true );
         if ( ! is_array( $v ) || count( $v ) !== 5 || ! fc_embed_trusted_src( (string) $v[4] ) ) return '';
-        $type = in_array( $v[0], [ 'video', 'archive', 'instagram', 'facebook' ], true ) ? $v[0] : 'video';
+        $type = in_array( $v[0], [ 'video', 'archive', 'instagram', 'facebook', 'map', 'tiktok' ], true ) ? $v[0] : 'video';
         return fc_embed_frame( (string) $v[4], $type, (int) $v[2], (int) $v[3], (bool) $v[1] );
     }, wp_unslash( (string) $data['post_content'] ) );
     $data['post_content'] = wp_slash( $raw );
@@ -657,5 +669,5 @@ function fc_embed_restore( $data ) {
 /** True only for player addresses the plugin itself writes. */
 function fc_embed_trusted_src( $src ) {
     if ( ! preg_match( '#^[A-Za-z0-9._~:/?\#@!$&()*+,;=%-]+$#', $src ) ) return false; // no quotes, spaces or brackets
-    return (bool) preg_match( '#^https://(?:www\.facebook\.com/plugins/(?:video|post)\.php\?|www\.instagram\.com/(?:p|reel|tv)/[A-Za-z0-9_-]+/embed/|archive\.org/embed/|www\.awesomescreenshot\.com/embed\?|player\.vimeo\.com/video/\d+|www\.youtube\.com/embed/)#', $src );
+    return (bool) preg_match( '#^https://(?:www\.facebook\.com/plugins/(?:video|post)\.php\?|www\.instagram\.com/(?:p|reel|tv)/[A-Za-z0-9_-]+/embed/|archive\.org/embed/|www\.awesomescreenshot\.com/embed\?|player\.vimeo\.com/video/\d+|www\.youtube\.com/embed/|www\.google\.com/maps/embed\?pb=|www\.tiktok\.com/player/v1/\d+)#', $src );
 }
