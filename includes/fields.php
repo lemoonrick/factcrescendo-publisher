@@ -452,7 +452,11 @@ function fc_enqueue_editor_panel() {
             fc_asset_version( 'assets/paste-cleaner.js' ),
             true
         );
-        wp_add_inline_script( 'fc-paste-cleaner', 'window.fcPaste = { on: true };', 'before' );
+        wp_add_inline_script( 'fc-paste-cleaner', 'window.fcPaste = ' . wp_json_encode( [
+            'on'      => true,
+            'webp'    => fc_webp_enabled() && fc_webp_can(),   // make pictures lighter in the browser before sending
+            'quality' => fc_webp_quality(),
+        ] ) . ';', 'before' );
     }
 
     $ratings = [];

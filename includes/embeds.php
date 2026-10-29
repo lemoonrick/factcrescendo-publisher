@@ -431,8 +431,10 @@ function fc_embed_previous_default_notes() {
 /** The note list as saved in Settings; a list nobody has changed follows the plugin's default. */
 function fc_embed_notes_text() {
     $saved = get_option( 'fc_embed_notes', false );
-    $old   = [ trim( fc_embed_previous_default_notes() ), trim( preg_replace( '/\nproduction note\*$/', '', fc_embed_default_notes() ) ) ];
-    if ( $saved === false || trim( (string) $saved ) === '' || in_array( trim( (string) $saved ), $old, true ) ) return fc_embed_default_notes();
+    // Browsers send the Settings box back with Windows line endings: compare without them.
+    $norm  = function ( $t ) { return trim( preg_replace( '/[ \t]*\R[ \t]*/u', "\n", (string) $t ) ); };
+    $old   = [ $norm( fc_embed_previous_default_notes() ), $norm( preg_replace( '/\nproduction note\*$/', '', fc_embed_default_notes() ) ), $norm( fc_embed_default_notes() ) ];
+    if ( $saved === false || $norm( $saved ) === '' || in_array( $norm( $saved ), $old, true ) ) return fc_embed_default_notes();
     return (string) $saved;
 }
 
@@ -555,7 +557,7 @@ function fc_embed_code_block( $inner ) {
  * code become Embed, Custom HTML and Image blocks; author notes above them
  * are deleted. Anything else is left exactly as it is.
  */
-function fc_embed_convert( $content ) {
+function fc_embed_convert( $content, $first = true ) {
     if ( strpos( $content, '<!-- wp:' ) === false ) return $content; // classic editor: not touched
 
     // Paragraph blocks holding only a link, embed code, or pasted HTML.
@@ -595,15 +597,19 @@ function fc_embed_convert( $content ) {
         $content
     );
 
-    // A picture stuck inside a paragraph (pasted right next to a line of text) gets its own block.
-    $content = preg_replace_callback(
-        '#<!-- wp:paragraph(\s+\{[^\n]*?\})?\s+-->\s*(<p\b[^>]*>)((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->#s',
-        'fc_embed_split_pictures',
-        $content
-    );
+    // Layout, only the first time the article is saved: after that, whatever the editor arranges
+    // by hand (a picture inside a paragraph, a table of pictures) is their choice and stays.
+    if ( $first ) {
+        // A picture stuck inside a paragraph (pasted right next to a line of text) gets its own block.
+        $content = preg_replace_callback(
+            '#<!-- wp:paragraph(\s+\{[^\n]*?\})?\s+-->\s*(<p\b[^>]*>)((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->#s',
+            'fc_embed_split_pictures',
+            $content
+        );
 
-    // A table that holds only pictures (writers use one to put pictures side by side) becomes rows of pictures.
-    $content = preg_replace_callback( '#<!-- wp:table(?:\s+\{[^\n]*?\})?\s+-->(?:(?!<!-- /wp:table -->).)*<!-- /wp:table -->#s', 'fc_embed_picture_table', $content );
+        // A table that holds only pictures (writers use one to put pictures side by side) becomes rows of pictures.
+        $content = preg_replace_callback( '#<!-- wp:table(?:\s+\{[^\n]*?\})?\s+-->(?:(?!<!-- /wp:table -->).)*<!-- /wp:table -->#s', 'fc_embed_picture_table', $content );
+    }
 
     // A "side by side" note just above two or more pictures: the pictures go side by side.
     // Nothing else puts pictures side by side.
@@ -612,20 +618,24 @@ function fc_embed_convert( $content ) {
     $content = preg_replace_callback(
         '#(<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->)\s*((?:' . $image . '\s*(?:' . $blank . '\s*)*){2,})#s',
         function ( $m ) use ( $image ) {
-            if ( ! fc_embed_says_side_by_side( $m[2] ) ) return $m[0];
+            // Only a note (which is then removed, so this happens once and never undoes a layout
+            // made by hand). A real sentence that happens to say "side by side" changes nothing.
+            if ( ! fc_embed_says_side_by_side( $m[2] ) || ! fc_embed_is_side_note( $m[2] ) ) return $m[0];
             preg_match_all( '#' . $image . '#s', $m[3], $all );
             if ( count( $all[0] ) < 2 ) return $m[0];
-            // The note goes; a real sentence that happens to say "side by side" stays.
-            $keep = fc_embed_is_side_note( $m[2] ) ? '' : $m[1] . "\n\n";
-            return $keep . fc_embed_columns( fc_embed_side_rows( $all[0] ) ) . "\n\n";
+            return fc_embed_columns( fc_embed_side_rows( $all[0] ) ) . "\n\n";
         },
         $content
     );
 
-    // "[PRODUCTION NOTE: ..." and the other "starts with" notes, wherever they stand alone.
+    // Production notes ("[PRODUCTION NOTE: ...", any spelling) and the other "starts with" notes, wherever they are.
     $content = preg_replace_callback(
-        '#<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>((?:(?!</p>).)*)</p>\s*<!-- /wp:paragraph -->\s*#s',
-        function ( $m ) { return fc_embed_is_prefix_note( $m[1] ) ? '' : $m[0]; },
+        '#(<!-- wp:paragraph(?:\s+\{[^\n]*?\})?\s+-->\s*<p\b[^>]*>)((?:(?!</p>).)*)(</p>\s*<!-- /wp:paragraph -->)\s*#s',
+        function ( $m ) {
+            $rest = fc_embed_strip_production_note( $m[2] );
+            if ( $rest === null ) return fc_embed_is_prefix_note( $m[2] ) ? '' : $m[0];
+            return $rest === '' ? '' : $m[1] . $rest . $m[3] . "\n\n";
+        },
         $content
     );
 
@@ -728,6 +738,37 @@ function fc_embed_split_pictures( $m ) {
     if ( substr_count( implode( '', $out ), '<img ' ) !== count( $cuts ) ) return $m[0];
 
     return implode( "\n\n", $out );
+}
+
+/**
+ * A production note, however it is written: "[PRODUCTION NOTE: …",
+ * "Production Notes -", "PRODUCTION-NOTE", "(prod. note) …", "Note to
+ * production: …".
+ *
+ * Returns null when the paragraph is not one (it stays as it is), '' when the
+ * whole paragraph is the note, or the paragraph without the note when the note
+ * was in brackets and the article text carries on after it. Never touches a
+ * sentence like "Production notes are kept by the team." — a note has a
+ * bracket, a colon or dash after the label, or is written in capitals.
+ */
+function fc_embed_strip_production_note( $html ) {
+    $lead  = '(?:\s|&nbsp;|<[^>]+>)*';                       // formatting before the label
+    $label = '(?:production|prod\.?)[\s\-_]*notes?|notes?\s+(?:to|for)\s+(?:the\s+)?production';
+
+    // In brackets: "[PRODUCTION NOTE: …]" or "(production note …)".
+    if ( preg_match( '#^' . $lead . '([\[\(])' . $lead . '(?:' . $label . ')\b#iu', $html, $mm ) ) {
+        $close = $mm[1] === '[' ? ']' : ')';
+        $end   = strpos( $html, $close, strlen( $mm[0] ) );
+        if ( $end === false ) return '';                       // never closed: the whole line is the note
+        $rest = preg_replace( '#^(?:\s|&nbsp;|</[^>]+>)+#', '', substr( $html, $end + 1 ) );
+        return fc_embed_words( $rest ) === '' ? '' : force_balance_tags( $rest );   // no stray closing tags left behind
+    }
+
+    $text = fc_embed_words( $html );
+    if ( ! preg_match( '#^[\*\s]*(' . $label . ')\b(.?)#iu', $text, $t ) ) return null;
+    $after_ok = $t[2] === '' || preg_match( '#^[:\-–—\]\)\*]#u', $t[2] );
+    $shouted  = preg_match( '#^[\*\s]*(?:PRODUCTION|PROD)#', $text ) === 1;
+    return ( $after_ok || $shouted ) ? '' : null;
 }
 
 /** True when the text asks for side by side, however it is written: "Side by Side", "SIDE-BY-SIDE", "side_by_side", "sidebyside" ... */
@@ -859,16 +900,30 @@ function fc_embed_on_save( $data, $postarr ) {
      * anything printed here is thrown away, and if anything at all goes wrong
      * the article is saved exactly as it was written.
      */
+    $id    = (int) ( $postarr['ID'] ?? 0 );
+    $first = ! $id || ! get_post_meta( $id, '_fc_layout_done', true );
+
     ob_start();
     try {
-        $converted = fc_embed_convert( wp_unslash( (string) $data['post_content'] ) );
+        $converted = fc_embed_convert( wp_unslash( (string) $data['post_content'] ), $first );
         if ( is_string( $converted ) && $converted !== '' ) $data['post_content'] = wp_slash( $converted );
+        if ( $first && trim( wp_strip_all_tags( (string) $data['post_content'] ) . ( strpos( (string) $data['post_content'], '<img' ) !== false ? 'x' : '' ) ) !== '' ) {
+            $GLOBALS['fc_layout_done_pending'] = true;     // noted once the post has its ID (below)
+        }
     } catch ( \Throwable $e ) {
         // Leave the article as it is.
     }
     ob_end_clean();
     return $data;
 }
+
+// After the first save with content, the layout is the editor's: see fc_embed_convert().
+add_action( 'save_post', function ( $post_id, $post ) {
+    if ( empty( $GLOBALS['fc_layout_done_pending'] ) || wp_is_post_revision( $post_id ) ) return;
+    if ( ! in_array( $post->post_type, [ 'post', 'page' ], true ) ) return;
+    unset( $GLOBALS['fc_layout_done_pending'] );
+    update_post_meta( $post_id, '_fc_layout_done', 1 );
+}, 10, 2 );
 
 /**
  * Whether one more lookup on another website is allowed during this request.

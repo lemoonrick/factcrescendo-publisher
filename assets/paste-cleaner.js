@@ -209,6 +209,44 @@
         return html.split( /(?:\s*<br\b[^>]*>\s*)+/i ).map( function ( s ) { return s.trim(); } ).filter( function ( s ) { return plain( s ) !== ''; } );
     }
 
+    // ── Writers' notes ───────────────────────────────────────────────────────
+
+    var LABEL = '(?:production|prod\\.?)[\\s\\-_]*notes?|notes?\\s+(?:to|for)\\s+(?:the\\s+)?production';
+
+    /**
+     * A production note, however it is written ("[PRODUCTION NOTE: …", "Production
+     * Notes -", "(prod. note) …", "Note to production: …"). Same rules as on save
+     * (embeds.php): null = not a note, '' = the whole line is the note, otherwise the
+     * line without the bracketed note. "Production notes are kept by the team." is
+     * a sentence and is never touched.
+     */
+    function stripProductionNote( html ) {
+        var lead = '(?:\\s|&nbsp;|<[^>]+>)*';
+        var m = new RegExp( '^' + lead + '([\\[\\(])' + lead + '(?:' + LABEL + ')\\b', 'i' ).exec( html );
+        if ( m ) {
+            var end = html.indexOf( m[ 1 ] === '[' ? ']' : ')', m[ 0 ].length );
+            if ( end === -1 ) return '';
+            var rest = html.slice( end + 1 ).replace( /^(?:\s|&nbsp;|<\/[^>]+>)+/, '' );
+            return plain( rest ) === '' ? '' : rest;
+        }
+        var t  = plain( html );
+        var mm = new RegExp( '^[\\*\\s]*(' + LABEL + ')\\b(.?)', 'i' ).exec( t );
+        if ( ! mm ) return null;
+        var afterOk = mm[ 2 ] === '' || /^[:\-\u2013\u2014\]\)\*]/.test( mm[ 2 ] );
+        return ( afterOk || /^[\*\s]*(?:PRODUCTION|PROD)/.test( t ) ) ? '' : null;
+    }
+
+    /** "Side by side", "SIDE-BY-SIDE", "side_by_side", "sidebyside" ... */
+    function saysSideBySide( html ) {
+        return plain( html ).toLowerCase().replace( /[^a-z]+/g, '' ).indexOf( 'sidebyside' ) !== -1;
+    }
+
+    /** An instruction rather than a sentence: a few words, in brackets, or with the word "note". */
+    function isNoteLike( html ) {
+        var t = plain( html ).toLowerCase();
+        return t !== '' && ( t.split( /\s+/ ).length <= 6 || /^[\[\(\*\{]/.test( t ) || /\bnote\b/.test( t ) );
+    }
+
     function tidy( blocks, stats ) {
         var out = [];
         blocks.forEach( function ( b ) {
@@ -219,6 +257,9 @@
                 var lines = splitLines( content );
                 if ( lines.length !== 1 || lines[ 0 ] !== b.attributes.content ) stats.tidied++;
                 lines.forEach( function ( line ) {
+                    var pn = stripProductionNote( line );
+                    if ( pn === '' ) { stats.notes++; stats.tidied++; return; }
+                    if ( pn !== null ) { line = pn; stats.notes++; stats.tidied++; }
                     out.push( { block: wp.blocks.createBlock( 'core/paragraph', Object.assign( {}, b.attributes, { content: line } ) ) } );
                 } );
             } else if ( b.name === 'core/heading' ) {
@@ -273,6 +314,40 @@
         } );
     }
 
+    /**
+     * Makes a picture lighter before it is sent: at most 2560 pixels on its longest
+     * side (the size WordPress itself scales big photos down to) and WebP at the
+     * quality chosen in Settings. Uploads are much faster and the server has less
+     * to do. GIFs, animated PNGs and anything the browser can't read go as they are.
+     * If the result isn't smaller, the original is sent. Never fails: any problem
+     * means the original is sent and the server converts it.
+     */
+    function lighten( blob ) {
+        if ( ! cfg.webp || typeof createImageBitmap !== 'function' || ! /^image\/(jpeg|png|webp)$/.test( blob.type ) ) return Promise.resolve( blob );
+        if ( blob.size > 25 * 1024 * 1024 ) return Promise.resolve( blob );   // a huge file could exhaust a phone's memory: the server handles it
+        var check = blob.type === 'image/png' && blob.slice && blob.slice( 0, 4096 ).arrayBuffer
+            ? blob.slice( 0, 4096 ).arrayBuffer().then( function ( buf ) { return new TextDecoder( 'latin1' ).decode( buf ).indexOf( 'acTL' ) === -1; } )
+            : Promise.resolve( true );
+        return check.then( function ( stillPicture ) {
+            if ( ! stillPicture ) return blob;                                   // animated PNG
+            return createImageBitmap( blob, { imageOrientation: 'from-image' } ).then( function ( bmp ) {
+                var scale = Math.min( 1, 2560 / Math.max( bmp.width, bmp.height ) );
+                var w = Math.max( 1, Math.round( bmp.width * scale ) ), h = Math.max( 1, Math.round( bmp.height * scale ) );
+                var canvas = document.createElement( 'canvas' );
+                canvas.width = w;
+                canvas.height = h;
+                canvas.getContext( '2d' ).drawImage( bmp, 0, 0, w, h );
+                if ( bmp.close ) bmp.close();
+                return new Promise( function ( resolve ) { canvas.toBlob( resolve, 'image/webp', ( cfg.quality || 82 ) / 100 ); } ).then( function ( out ) {
+                    canvas.width = canvas.height = 0;                              // free the memory at once
+                    if ( ! out || out.type !== 'image/webp' ) return blob;        // this browser can't make WebP
+                    if ( scale === 1 && out.size >= blob.size ) return blob;      // not lighter: keep the original
+                    return out;
+                } );
+            } );
+        } ).catch( function () { return blob; } );
+    }
+
     function upload( blob, image, n ) {
         var fd = new FormData();
         fd.append( 'file', blob, 'pasted-image-' + ( n + 1 ) + '.' + extension( blob.type ) );
@@ -301,6 +376,8 @@
 
             var job = withTimeout( getBlob( image ).then( function ( blob ) {
                 if ( ! blob || ! /^image\//.test( blob.type || '' ) ) throw new Error( 'not a picture' );
+                return lighten( blob );
+            } ).then( function ( blob ) {
                 return upload( blob, image, i );
             } ), TIMEOUT ).then( function ( r ) { r.how = 'uploaded'; return r; }, function ( e ) {
                 // Could not copy it in. A web address can still be shown as it is; anything else is lost.
@@ -359,8 +436,26 @@
     function prepare( html, plainText ) {
         var pre    = preprocess( html );
         var blocks = wp.blocks.pasteHandler( { HTML: pre.html, plainText: plainText, mode: 'BLOCKS' } );
-        var stats  = { tidied: 0, duplicates: pre.stats.duplicates, tiny: pre.stats.tiny };
+        var stats  = { tidied: 0, notes: 0, side: 0, duplicates: pre.stats.duplicates, tiny: pre.stats.tiny };
         var items  = tidy( blocks, stats );
+
+        // A "side by side" note right above two or more pictures: they go in a row, the note goes.
+        // (The same happens on save; doing it here shows it straight away.)
+        for ( var i = 0; i < items.length; i++ ) {
+            var it = items[ i ];
+            if ( ! it.block || it.block.name !== 'core/paragraph' ) continue;
+            var c = String( it.block.attributes.content );
+            if ( ! saysSideBySide( c ) || ! isNoteLike( c ) ) continue;
+            var run = [];
+            for ( var j = i + 1; j < items.length && items[ j ].marker && items[ j ].marker.places === 1; j++ ) run.push( items[ j ] );
+            if ( run.length < 2 ) continue;
+            var g = 100000 + i;
+            run.forEach( function ( r, k ) { r.marker.group = g; r.marker.slot = k; r.marker.places = run.length; } );
+            items.splice( i, 1 );
+            stats.side++;
+            stats.tidied++;
+            i--;
+        }
 
         // A plain sentence or two with nothing to fix: WordPress handles those fine.
         if ( ! items.length ) return null;
@@ -391,12 +486,23 @@
         } );
         insertAtCursor( list );
 
+        var extra = ( stats.notes ? ' Removed ' + stats.notes + ' production note' + ( stats.notes > 1 ? 's' : '' ) + '.' : '' )
+                  + ( stats.side ? ' Put pictures side by side as the note asked.' : '' );
         if ( ! pre.images.length ) {
-            notice( 'Cleaned the pasted text.' );
+            notice( 'Cleaned the pasted text.' + extra );
             return;
         }
 
-        notice( 'Pasted. Adding ' + pre.images.length + ' picture' + ( pre.images.length > 1 ? 's' : '' ) + ' to the Media Library…' );
+        notice( 'Pasted. Adding ' + pre.images.length + ' picture' + ( pre.images.length > 1 ? 's' : '' ) + ' to the Media Library\u2026 Saving waits until they are in.' );
+        // Save and Publish wait until the pictures are in, so an article is never published with
+        // "Adding picture..." lines in it. Never for long: each picture has a time limit, and the
+        // lock is lifted after 3 minutes whatever happens.
+        var ed = wp.data.dispatch( 'core/editor' ), lockName = 'fc-paste-' + Date.now();
+        var locked = !! ( ed && ed.lockPostSaving );
+        if ( locked ) ed.lockPostSaving( lockName );
+        var unlock = function () { if ( locked ) { locked = false; ed.unlockPostSaving( lockName ); } };
+        setTimeout( unlock, 180000 );
+
         transfer( pre.images, files ).then( function ( results ) {
             var dp = wp.data.dispatch( 'core/block-editor' ), be = wp.data.select( 'core/block-editor' );
             var ids = Object.keys( holders );
@@ -450,10 +556,12 @@
             if ( stats.duplicates ) parts.push( stats.duplicates + ' repeated picture' + ( stats.duplicates > 1 ? 's' : '' ) + ' removed' );
             if ( linked ) problems.push( linked + ' picture' + ( linked > 1 ? 's' : '' ) + ' could not be copied into the Media Library and still link to the original address, which may stop working. Download and add ' + ( linked > 1 ? 'them' : 'it' ) + ' yourself.' );
             if ( missing ) problems.push( missing + ' picture' + ( missing > 1 ? 's' : '' ) + ' did not come across. Look for the \u26a0 line' + ( missing > 1 ? 's' : '' ) + ' in the article and add ' + ( missing > 1 ? 'them' : 'it' ) + ' from the Media Library.' );
-            notice( parts.length ? 'Pictures added. ' + parts.join( '; ' ) + '.' : 'Pictures added.' );
+            notice( ( parts.length ? 'Pictures added. ' + parts.join( '; ' ) + '.' : 'Pictures added.' ) + extra );
             problems.forEach( warn );
         } ).catch( function () {
             warn( 'The pictures could not be added. Look for the \u23f3 lines in the article and add the pictures from the Media Library.' );
+        } ).then( function () {
+            unlock();
         } );
     }
 

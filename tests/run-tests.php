@@ -895,7 +895,7 @@ $stack = get_post_field( 'post_content', make_post( [], para( 'Some text.' ) . i
 check( 'stacked pictures with no note stay stacked (no columns)', strpos( $stack, 'wp:columns' ) === false && substr_count( $stack, '<!-- wp:image' ) === 3 );
 $sentence = 'The viral image and the original are shown side by side below for comparison by our team.';
 $sx = side( $sentence, 2 );
-check( 'a real sentence saying "side by side": pictures go side by side, the sentence stays', layout( $sx ) === '2/2' && strpos( $sx, $sentence ) !== false );
+check( 'a real sentence saying "side by side" stays, and changes nothing (only a note does)', strpos( $sx, $sentence ) !== false && strpos( $sx, 'wp:columns' ) === false );
 $x = get_post_field( 'post_content', make_post( [], para( 'Side by side' ) . img_block( 1 ) . para( '' ) . img_block( 2 ) ) );
 check( 'an empty line between the pictures does not stop it', layout( $x ) === '2/2' );
 check( 'a "side by side" note above a single picture makes no columns', strpos( side( 'Side by side', 1 ), 'wp:columns' ) === false );
@@ -910,6 +910,40 @@ $pn = get_post_field( 'post_content', make_post( [], para( 'Intro.' ) . para( '[
 check( '"[PRODUCTION NOTE: ..." is deleted wherever it stands alone', stripos( $pn, 'please check the photo credits' ) === false );
 check( '…but "Editor\'s note" stays', strpos( $pn, 'Editor&#8217;s note' ) !== false || strpos( $pn, "Editor's note" ) !== false );
 check( '…and a sentence that merely starts with the same words ("Production notes are kept…") stays', strpos( $pn, 'Production notes are kept by the team.' ) !== false && strpos( $pn, 'Intro.' ) !== false );
+
+// Production notes, any spelling. Only the note goes.
+$notes_in = [
+    '<strong>[PRODUCTION NOTE: These three near-identical posts could be merged.</strong>' => '',
+    'PRODUCTION NOTE - check the date'                                          => '',
+    'Production Notes: use the second photo'                                    => '',
+    'production-note: crop the image'                                           => '',
+    '*Production note* swap the order'                                          => '',
+    '(prod. note: second screenshot)'                                           => '',
+    'Note to production: merge these'                                           => '',
+    'PRODUCTION NOTE'                                                           => '',
+    '[Production note: delete this] The claim went viral on Monday.'            => 'The claim went viral on Monday.',
+    'Production notes are kept by the team.'                                    => 'Production notes are kept by the team.',
+    'The production note was missing from the file.'                            => 'The production note was missing from the file.',
+];
+foreach ( $notes_in as $in => $want ) {
+    $got = get_post_field( 'post_content', make_post( [], para( 'Intro.' ) . para( $in ) . para( 'End.' ) ) );
+    $ok  = $want === '' ? stripos( $got, 'prod' ) === false && strpos( $got, 'Intro.' ) !== false && strpos( $got, 'End.' ) !== false
+                        : strpos( $got, '<p>' . $want . '</p>' ) !== false && strpos( $got, 'Intro.' ) !== false;
+    check( ( $want === '' ? 'production note removed: ' : 'kept: ' ) . wp_strip_all_tags( $in ), $ok, $got );
+}
+// The Settings box comes back from the browser with Windows line endings: still the default list.
+update_option( 'fc_embed_notes', str_replace( "\n", "\r\n", preg_replace( '/\nproduction note\*$/', '', fc_embed_default_notes() ) ) );
+check( 'a notes list saved from the browser (Windows line endings) still gets the new defaults', in_array( 'production note', fc_embed_note_prefixes(), true ) );
+delete_option( 'fc_embed_notes' );
+
+// After the first save, a layout made by hand is the editor's choice.
+$hand = make_post( [], para( 'Text.' ) );
+$by_hand = $ptable . para( 'Before <img src="https://example.com/inline.png"> after' );
+wp_update_post( wp_slash( [ 'ID' => $hand, 'post_content' => $by_hand ] ) );
+$after_hand = get_post_field( 'post_content', $hand );
+check( 'later saves keep a table of pictures and an inline picture the editor made by hand', strpos( $after_hand, 'wp:table' ) !== false && strpos( $after_hand, 'Before <img' ) !== false && strpos( $after_hand, 'wp:columns' ) === false );
+$fresh = get_post_field( 'post_content', make_post( [], $by_hand ) );
+check( '…while the first save of a pasted article still tidies them', strpos( $fresh, 'wp:table' ) === false && strpos( $fresh, 'wp:columns' ) !== false && strpos( $fresh, 'Before <img' ) === false );
 
 check( 'Awesome Screenshot: video link with key', strpos( fc_embed_html( 'https://www.awesomescreenshot.com/video/56526199?key=dc9dbe8652de8661e10d6fb0eeee75db' ), 'embed?id=56526199&#038;shareKey=dc9dbe8652de8661e10d6fb0eeee75db' ) !== false );
 check( 'Awesome Screenshot: embed address on its own line', strpos( get_post_field( 'post_content', make_post( [], para( 'https://www.awesomescreenshot.com/embed?id=56443580&amp;shareKey=7c2f0e835e96f593fac8e1692295db68' ) ) ), 'embed?id=56443580&#038;shareKey=7c2f0e835e96f593fac8e1692295db68' ) !== false );
