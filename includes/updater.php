@@ -22,7 +22,7 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 /** How long a good answer is kept before we ask GitHub again. */
-define( 'FC_UPDATER_CACHE_TTL', 12 * HOUR_IN_SECONDS );
+define( 'FC_UPDATER_CACHE_TTL', 3 * HOUR_IN_SECONDS );
 
 /** How long a failed answer is kept. Shorter, so outages recover quickly. */
 define( 'FC_UPDATER_FAIL_TTL', HOUR_IN_SECONDS );
@@ -70,14 +70,26 @@ function fc_updater_slug() {
 
 /**
  * The newest version available, as an array of
- * [ version, zip, notes, published, url ], or null if we couldn't find one.
+ * [ version, tag, zip, notes, published, url ], or null if we couldn't find one.
  *
- * Checks releases and tags and returns whichever is newer. On a tie the
- * release wins, because only a release carries notes.
+ * Read from the list of tags: one request, the highest version wins. The
+ * answer is kept for 3 hours, so a site never offers a version that is long
+ * out of date. WordPress's own "Check again" button (Dashboard → Updates)
+ * asks GitHub straight away. Release notes are only fetched when someone
+ * opens "View details".
  *
  * @param bool $force Skip the cache and ask GitHub now.
  */
 function fc_updater_latest_version( $force = false ) {
+    static $fresh = null;   // the answer "Check again" already got during this page load
+
+    // "Check again" on Dashboard → Updates: ask now, once per page load.
+    $button = false;
+    if ( ! $force && is_admin() && isset( $_GET['force-check'] ) && current_user_can( 'update_plugins' ) ) {
+        if ( $fresh !== null ) return $fresh ?: null;
+        $force  = true;
+        $button = true;
+    }
 
     if ( ! $force ) {
         $cached = get_transient( FC_UPDATER_CACHE_KEY );
@@ -88,19 +100,16 @@ function fc_updater_latest_version( $force = false ) {
         }
     }
 
-    $best = fc_updater_from_release();
-    $tag  = fc_updater_from_tag();
-
-    if ( $tag && ( ! $best || version_compare( $tag['version'], $best['version'], '>' ) ) ) {
-        $best = $tag;
-    }
+    $best = fc_updater_from_tag();
 
     if ( ! $best ) {
         set_transient( FC_UPDATER_CACHE_KEY, '', FC_UPDATER_FAIL_TTL );
+        if ( $button ) $fresh = false;
         return null;
     }
 
     set_transient( FC_UPDATER_CACHE_KEY, $best, FC_UPDATER_CACHE_TTL );
+    if ( $button ) $fresh = $best;
 
     return $best;
 }
@@ -132,24 +141,21 @@ function fc_updater_github_get( $path ) {
 }
 
 /**
- * The newest published release, or null if the repository has none.
+ * The notes and date of the release published for a tag, if one was
+ * published. Only for the "View details" popup; remembered for 12 hours.
  */
-function fc_updater_from_release() {
+function fc_updater_release_info( $tag_name ) {
+    $key    = 'fc_release_' . md5( $tag_name );
+    $cached = get_transient( $key );
+    if ( is_array( $cached ) ) return $cached;
 
-    $body = fc_updater_github_get( '/releases/latest' );
-
-    if ( empty( $body['tag_name'] ) ) return null;
-
-    $version = fc_updater_version_from_tag( $body['tag_name'] );
-    if ( $version === '' ) return null;
-
-    return [
-        'version'   => $version,
-        'zip'       => fc_updater_pick_zip( $body ),
+    $body = fc_updater_github_get( '/releases/tags/' . rawurlencode( $tag_name ) );
+    $info = [
         'notes'     => isset( $body['body'] ) ? (string) $body['body'] : '',
         'published' => isset( $body['published_at'] ) ? (string) $body['published_at'] : '',
-        'url'       => isset( $body['html_url'] ) ? (string) $body['html_url'] : '',
     ];
+    set_transient( $key, $info, 12 * HOUR_IN_SECONDS );
+    return $info;
 }
 
 /**
@@ -177,6 +183,7 @@ function fc_updater_from_tag() {
         if ( $best === null || version_compare( $version, $best['version'], '>' ) ) {
             $best = [
                 'version'   => $version,
+                'tag'       => (string) $tag['name'],
                 'zip'       => (string) $tag['zipball_url'],
                 'notes'     => '',
                 'published' => '',
@@ -200,29 +207,6 @@ function fc_updater_version_from_tag( $tag_name ) {
     $version = ltrim( trim( (string) $tag_name ), 'vV' );
 
     return preg_match( '/^\d+(\.\d+)*$/', $version ) ? $version : '';
-}
-
-/**
- * Which ZIP to download.
- *
- * A ZIP attached to the release is preferred, since it is packaged with the
- * right folder name already. Otherwise we use GitHub's automatic source ZIP,
- * which works once fc_updater_fix_folder_name() renames the folder.
- */
-function fc_updater_pick_zip( $body ) {
-
-    if ( ! empty( $body['assets'] ) && is_array( $body['assets'] ) ) {
-        foreach ( $body['assets'] as $asset ) {
-            if ( empty( $asset['browser_download_url'] ) || empty( $asset['name'] ) ) continue;
-
-            if ( strtolower( substr( $asset['name'], -4 ) ) === '.zip' && fc_updater_trusted_url( $asset['browser_download_url'] ) ) {
-                return (string) $asset['browser_download_url'];
-            }
-        }
-    }
-
-    $zip = ! empty( $body['zipball_url'] ) ? (string) $body['zipball_url'] : '';
-    return fc_updater_trusted_url( $zip ) ? $zip : '';
 }
 
 /** True only for downloads from this plugin's own GitHub repository. */
@@ -337,6 +321,11 @@ function fc_updater_plugin_details( $result, $action, $args ) {
 
     $latest = fc_updater_latest_version();
     if ( ! $latest ) return $result;
+
+    // Notes only exist when a release was published for this tag.
+    $info = fc_updater_release_info( $latest['tag'] ?? 'v' . $latest['version'] );
+    if ( $latest['notes'] === '' ) $latest['notes'] = $info['notes'];
+    if ( $latest['published'] === '' ) $latest['published'] = $info['published'];
 
     return (object) [
         'name'          => 'FactCrescendo Publisher',

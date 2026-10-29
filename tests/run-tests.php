@@ -665,6 +665,43 @@ check( 'claim reviewed is the claim', ( $json['claimReviewed'] ?? '' ) === $base
 check( 'verdict text is Misleading', ( $json['reviewRating']['alternateName'] ?? '' ) === 'Misleading' );
 check( 'claim source included', ( $json['itemReviewed']['appearance']['url'] ?? '' ) === 'https://example.com/v' );
 check( 'normal post has no schema', render_head( $plain ) === '' );
+check( 'Insight and News articles are not marked as fact checks for Google', ! fc_claimreview_for_rating( 'insight' ) && ! fc_claimreview_for_rating( 'News' ) );
+check( '…every real verdict still is', fc_claimreview_for_rating( 'false' ) && fc_claimreview_for_rating( 'misleading' ) && fc_claimreview_for_rating( 'missing-context' ) && fc_claimreview_for_rating( 'satire' ) && fc_claimreview_for_rating( 'altered' ) && fc_claimreview_for_rating( 'partly-false' ) );
+
+// ─────────────────────────────────────────────────────────────────────────────
+section( 'Updates from GitHub' );
+
+$gh_calls = [];
+$gh_tags  = [ 'v4.9.1', 'v4.8.0', 'v4.10.0', 'v4.9.0', 'v4.10.0-rc1', 'beta' ];
+$gh_mock  = function ( $pre, $args, $url ) use ( &$gh_calls, &$gh_tags ) {
+    if ( strpos( $url, 'api.github.com' ) === false ) return $pre;
+    $gh_calls[] = $url;
+    if ( strpos( $url, '/releases/tags/' ) !== false ) return [ 'response' => [ 'code' => 200 ], 'headers' => [], 'body' => wp_json_encode( [ 'body' => 'What changed', 'published_at' => '2026-10-29T10:00:00Z' ] ) ];
+    $body = array_map( function ( $t ) { return [ 'name' => $t, 'zipball_url' => 'https://api.github.com/repos/lemoonrick/factcrescendo-publisher/zipball/' . $t ]; }, $gh_tags );
+    return [ 'response' => [ 'code' => 200 ], 'headers' => [], 'body' => wp_json_encode( $body ) ];
+};
+add_filter( 'pre_http_request', $gh_mock, 10, 3 );
+delete_transient( FC_UPDATER_CACHE_KEY );
+$latest = fc_updater_latest_version( true );
+check( 'the highest version tag is offered, whatever order GitHub lists them in', ( $latest['version'] ?? '' ) === '4.10.0' && ( $latest['tag'] ?? '' ) === 'v4.10.0' );
+check( 'one request to GitHub per check (tags only)', count( $gh_calls ) === 1 && strpos( $gh_calls[0], '/tags' ) !== false );
+check( 'the answer is kept for 3 hours, not 12', FC_UPDATER_CACHE_TTL === 3 * HOUR_IN_SECONDS );
+$gh_tags[] = 'v4.11.0';
+check( 'a normal check uses the saved answer', fc_updater_latest_version()['version'] === '4.10.0' );
+require_once ABSPATH . 'wp-admin/includes/class-wp-screen.php';
+require_once ABSPATH . 'wp-admin/includes/screen.php';
+set_current_screen( 'update-core' );
+$_GET['force-check'] = '1';
+$forced = fc_updater_latest_version();
+fc_updater_latest_version();
+unset( $_GET['force-check'] );
+check( 'WordPress\'s own "Check again" button asks GitHub straight away (once per page)', $forced['version'] === '4.11.0' && count( $gh_calls ) === 2 );
+$GLOBALS['current_screen'] = null;
+$details = fc_updater_plugin_details( false, 'plugin_information', (object) [ 'slug' => fc_updater_slug() ] );
+check( 'release notes are only fetched for "View details"', strpos( $details->sections['changelog'] ?? '', 'What changed' ) !== false && count( $gh_calls ) === 3 );
+remove_filter( 'pre_http_request', $gh_mock, 10 );
+delete_transient( FC_UPDATER_CACHE_KEY );
+
 
 
 // ─────────────────────────────────────────────────────────────────────────────

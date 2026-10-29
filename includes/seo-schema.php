@@ -51,6 +51,8 @@ function fc_inject_claim_review_schema() {
     $rating = fc_meta( 'fc_rating', $post_id );
     if ( empty( $rating ) ) return;
 
+    if ( ! fc_claimreview_for_rating( $rating ) ) return;
+
     $claim        = trim( (string) fc_meta( 'fc_claim', $post_id ) );
     $rating_label = fc_get_rating_label( $rating );
     $rating_value = fc_get_schema_rating_value( $rating );
@@ -159,6 +161,17 @@ function fc_inject_claim_review_schema() {
     echo "\n" . '<script type="application/ld+json">'
         . wp_json_encode( $schema, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG )
         . '</script>' . "\n";
+}
+
+/**
+ * False for ratings that are not a verdict on a claim. Insight and News
+ * articles explain or report; marking them as fact checks for Google would be
+ * wrong (and Google's fact-check rules only cover rated claims).
+ */
+function fc_claimreview_for_rating( $rating ) {
+    /** Filter: ratings that never get fact-check data. */
+    $skip = (array) apply_filters( 'fc_claimreview_skip_ratings', [ 'insight', 'news' ] );
+    return ! in_array( strtolower( (string) $rating ), $skip, true );
 }
 
 /**
