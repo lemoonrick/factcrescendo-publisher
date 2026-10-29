@@ -658,7 +658,7 @@
         if ( r && ! r.failed && r.id && ! wp.data.select( 'core/editor' ).getEditedPostAttribute( 'featured_media' ) ) {
             wp.data.dispatch( 'core/editor' ).editPost( { featured_media: r.id } );
         }
-        if ( filledNow( 'featured' ) ) { item.state = 'ok'; item.detail = 'The picture right after the title was used.'; }
+        if ( filledNow( 'featured' ) ) { item.state = 'ok'; item.detail = 'The picture right after the title was used, and moved out of the article.'; }
         else { item.state = 'missing'; item.detail = 'The picture after the title could not be used. Set the featured image in the sidebar.'; }
         renderReport();
     }
@@ -861,6 +861,18 @@
 
             var missing = 0, linked = 0;
 
+            // The picture right after the title becomes the featured image and leaves the article.
+            // Only when it really is in the Media Library and no featured image was set already;
+            // otherwise it stays where it is.
+            var dropIndex = null;
+            if ( plan.header && plan.header.featuredIndex !== undefined ) {
+                var fr = results[ plan.header.featuredIndex ];
+                if ( fr && ! fr.failed && fr.id && fr.how !== 'linked' && ! wp.data.select( 'core/editor' ).getEditedPostAttribute( 'featured_media' ) ) {
+                    ed.editPost( { featured_media: fr.id } );
+                    dropIndex = plan.header.featuredIndex;
+                }
+            }
+
             function warning( index ) {
                 missing++;
                 // Never lose a picture silently: leave a visible reminder where it belongs.
@@ -881,6 +893,7 @@
                 if ( first.places <= 1 ) {
                     // A picture on its own.
                     holderIds.forEach( function ( id ) {
+                        if ( dropIndex !== null && holders[ id ].index === dropIndex ) { dp.removeBlocks( id, false ); return; }
                         var r = result( holders[ id ].index );
                         dp.replaceBlocks( id, r ? imageBlock( r ) : warning( holders[ id ].index ) );
                     } );
