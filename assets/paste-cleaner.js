@@ -432,6 +432,132 @@
         else dp.insertBlocks( blocks );
     }
 
+    // ── The Doc's header lines → the Fact Check fields ───────────────────────
+
+    /** True when the article is still empty, so a pasted header can't be mistaken for part of an article. */
+    function editorIsEmpty() {
+        return wp.data.select( 'core/block-editor' ).getBlocks().every( function ( b ) {
+            return b.name === 'core/paragraph' && plain( b.attributes.content ) === '';
+        } );
+    }
+
+    /** Takes the header lines off the top of the paste (items) and returns what they said, or null. */
+    function takeHeader( items ) {
+        if ( ! window.fcDocHeader || ! editorIsEmpty() ) return null;
+        var lines = [];
+        for ( var i = 0; i < items.length && items[ i ].block && items[ i ].block.name === 'core/paragraph'; i++ ) {
+            lines.push( plain( items[ i ].block.attributes.content ) );
+        }
+        var res = window.fcDocHeader.parse( lines );
+        if ( ! res ) return null;
+        items.splice( 0, res.count );
+        return res;
+    }
+
+    function norm( s ) {
+        return String( s || '' ).toLowerCase().replace( /\s+/g, ' ' ).trim();
+    }
+
+    /** One list of the site's own tags, categories or users that match a name exactly. */
+    function findByName( path, name ) {
+        return wp.apiFetch( { path: path + ( path.indexOf( '?' ) === -1 ? '?' : '&' ) + 'search=' + encodeURIComponent( name ) + '&per_page=100&_fields=id,name,slug' } ).then( function ( list ) {
+            var want = norm( name );
+            return ( list || [] ).filter( function ( x ) { return norm( x.name ) === want || norm( x.slug ) === want; } );
+        } );
+    }
+
+    /**
+     * Fills the Fact Check box and the post's title, slug, tags, category and author from the
+     * header, then says what it did and what it could not find. Never overwrites something
+     * already filled in; never creates categories.
+     */
+    function applyHeader( res ) {
+        var ed = wp.data.select( 'core/editor' ), dp = wp.data.dispatch( 'core/editor' );
+        var f = res.fields, meta = ed.getEditedPostAttribute( 'meta' ) || {};
+        var filled = [], kept = [], missing = [], notes = [], put = {};
+
+        function metaField( key, label, value ) {
+            if ( ! value ) { missing.push( label ); return; }
+            if ( String( meta[ key ] || '' ).trim() !== '' ) { kept.push( label ); return; }
+            put[ key ] = value;
+            filled.push( label );
+        }
+
+        if ( f.rating && ! res.rating ) notes.push( 'The rating “' + f.rating + '” is not one of ours.' );
+        metaField( 'fc_rating', 'Rating', res.rating );
+        metaField( 'fc_claim', 'Claim', f.claim );
+        metaField( 'fc_fact', res.factFromSynopsis ? 'Fact (from the Synopsis)' : 'Fact', f.fact );
+        if ( Object.keys( put ).length && String( meta.fc_is_fact_check || '' ) !== '1' ) put.fc_is_fact_check = '1';
+        if ( Object.keys( put ).length ) dp.editPost( { meta: put } );
+
+        var post = {};
+        if ( ! f.title ) missing.push( 'Title' );
+        else if ( String( ed.getEditedPostAttribute( 'title' ) || '' ).trim() !== '' ) kept.push( 'Title' );
+        else { post.title = f.title; filled.push( 'Title' ); }
+
+        if ( ! f.slug ) missing.push( 'Slug' );
+        else if ( String( ed.getEditedPostAttribute( 'slug' ) || '' ).trim() !== '' ) kept.push( 'Slug' );
+        else { post.slug = f.slug; filled.push( 'Slug' ); }
+        if ( Object.keys( post ).length ) dp.editPost( post );
+
+        if ( ! ed.getEditedPostAttribute( 'featured_media' ) ) missing.push( 'Featured image' );
+
+        var jobs = [];
+
+        // Tags: the site's own tag if the name exists, otherwise a new one (only where allowed).
+        if ( ! f.tags || ! f.tags.length ) missing.push( 'Tags' );
+        else jobs.push( ( function () {
+            var names = f.tags.slice( 0, 15 ), failed = [];
+            return Promise.all( names.map( function ( name ) {
+                return findByName( '/wp/v2/tags', name ).then( function ( hit ) {
+                    if ( hit.length ) return hit[ 0 ].id;
+                    return wp.apiFetch( { path: '/wp/v2/tags', method: 'POST', data: { name: name } } ).then( function ( t ) { return t.id; } );
+                } ).catch( function ( e ) {
+                    // "term_exists" carries the id of the tag that is already there.
+                    if ( e && e.code === 'term_exists' && e.data && e.data.term_id ) return e.data.term_id;
+                    failed.push( name );
+                    return 0;
+                } );
+            } ) ).then( function ( ids ) {
+                ids = ids.filter( Boolean );
+                var have = ed.getEditedPostAttribute( 'tags' ) || [];
+                var all = have.slice();
+                ids.forEach( function ( id ) { if ( all.indexOf( id ) === -1 ) all.push( id ); } );
+                if ( ids.length ) { dp.editPost( { tags: all } ); filled.push( 'Tags (' + ids.length + ')' ); }
+                if ( failed.length ) notes.push( 'Could not add these tags: ' + failed.join( ', ' ) + '.' );
+                if ( ! ids.length ) missing.push( 'Tags' );
+            } );
+        } )() );
+
+        // Category: must already exist on this site.
+        if ( ! f.category ) missing.push( 'Category' );
+        else jobs.push( findByName( '/wp/v2/categories', f.category ).then( function ( hit ) {
+            if ( ! hit.length ) { missing.push( 'Category (“' + f.category + '” is not a category on this site)' ); return; }
+            var have = ed.getEditedPostAttribute( 'categories' ) || [];
+            var onlyDefault = ! have.length || ( have.length === 1 && have[ 0 ] === 1 );
+            if ( ! onlyDefault ) { kept.push( 'Category' ); return; }
+            dp.editPost( { categories: [ hit[ 0 ].id ] } );
+            filled.push( 'Category' );
+        } ).catch( function () { missing.push( 'Category' ); } ) );
+
+        // Writer: only when exactly one user on this site has that name (and you may see the user list).
+        if ( ! f.writer ) missing.push( 'Author' );
+        else jobs.push( wp.apiFetch( { path: '/wp/v2/users?context=edit&search=' + encodeURIComponent( f.writer ) + '&per_page=20&_fields=id,name' } ).then( function ( list ) {
+            var want = norm( f.writer ), hit = ( list || [] ).filter( function ( u ) { return norm( u.name ) === want; } );
+            if ( hit.length !== 1 ) { missing.push( 'Author (no single user named “' + f.writer + '”)' ); return; }
+            if ( hit[ 0 ].id !== ed.getEditedPostAttribute( 'author' ) ) dp.editPost( { author: hit[ 0 ].id } );
+            filled.push( 'Author' );
+        } ).catch( function () { missing.push( 'Author (“' + f.writer + '” — set it yourself)' ); } ) );
+
+        return Promise.all( jobs ).then( function () {
+            var text = ( filled.length ? 'Filled from the Doc: ' + filled.join( ', ' ) + '. ' : 'Nothing could be filled from the Doc. ' )
+                     + ( kept.length ? 'Kept what you had: ' + kept.join( ', ' ) + '. ' : '' )
+                     + ( missing.length ? 'Not found — please fill in: ' + missing.join( ', ' ) + '. ' : '' )
+                     + ( notes.length ? notes.join( ' ' ) + ' ' : '' ) + 'The Doc\u2019s header lines were taken out of the article.';
+            if ( missing.length || notes.length ) warn( text ); else notice( text );
+        } );
+    }
+
     /** Works out what the paste should become, without touching the editor. null = leave it to WordPress. */
     function prepare( html, plainText ) {
         var pre    = preprocess( html );
@@ -457,9 +583,13 @@
             i--;
         }
 
+        // The Doc's header lines (Claim, Rating, Title ...) become the Fact Check fields, and leave the article.
+        var header = takeHeader( items );
+        if ( header ) stats.tidied++;
+
         // A plain sentence or two with nothing to fix: WordPress handles those fine.
-        if ( ! items.length ) return null;
-        if ( ! pre.images.length && items.length === 1 && items[ 0 ].block && items[ 0 ].block.name === 'core/paragraph' && ! stats.tidied ) return null;
+        if ( ! items.length && ! header ) return null;
+        if ( ! header && ! pre.images.length && items.length === 1 && items[ 0 ].block && items[ 0 ].block.name === 'core/paragraph' && ! stats.tidied ) return null;
 
         // Safety: every picture place-holder must have become its own paragraph. If one ended
         // up anywhere else (inside a table, a list, a quote...), the picture would be lost, so
@@ -468,7 +598,7 @@
         var leaked  = wp.blocks.serialize( items.filter( function ( it ) { return it.block; } ).map( function ( it ) { return it.block; } ) ).indexOf( '@@FCIMG' ) !== -1;
         if ( leaked || markers !== pre.images.length ) return null;
 
-        return { pre: pre, items: items, stats: stats };
+        return { pre: pre, items: items, stats: stats, header: header };
     }
 
     function execute( plan, files ) {
@@ -484,12 +614,13 @@
             }
             return it.block;
         } );
-        insertAtCursor( list );
+        if ( list.length ) insertAtCursor( list );
+        if ( plan.header ) applyHeader( plan.header ).catch( function () { warn( 'The Doc\u2019s header lines could not be read into the fields. Please fill them in yourself.' ); } );
 
         var extra = ( stats.notes ? ' Removed ' + stats.notes + ' production note' + ( stats.notes > 1 ? 's' : '' ) + '.' : '' )
                   + ( stats.side ? ' Put pictures side by side as the note asked.' : '' );
         if ( ! pre.images.length ) {
-            notice( 'Cleaned the pasted text.' + extra );
+            if ( ! plan.header ) notice( 'Cleaned the pasted text.' + extra );
             return;
         }
 

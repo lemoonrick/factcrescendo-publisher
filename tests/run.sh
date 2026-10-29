@@ -6,6 +6,8 @@ set -e
 PHP_VERSION="${1:-8.2}"
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+node "$PLUGIN_DIR/tests/doc-header.test.js"
+
 npx -y @wp-playground/cli@3.1.55 php \
   --php "$PHP_VERSION" \
   --mount "$PLUGIN_DIR:/wordpress/wp-content/plugins/factcrescendo-publisher" \
