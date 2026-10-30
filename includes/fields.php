@@ -445,17 +445,14 @@ function fc_enqueue_editor_panel() {
 
     // Tidies text and pictures pasted from Word, Google Docs and LibreOffice (assets/paste-cleaner.js).
     if ( get_option( 'fc_clean_paste', '1' ) === '1' ) {
-        wp_enqueue_script(
-            'fc-doc-header',
-            FC_PUBLISHER_URL . 'assets/doc-header.js',
-            [],
-            fc_asset_version( 'assets/doc-header.js' ),
-            true
-        );
+        // Reads the Doc's header lines (labels, reader) and fills the post from them (import + report).
+        wp_enqueue_script( 'fc-doc-labels', FC_PUBLISHER_URL . 'assets/doc-header-labels.js', [], fc_asset_version( 'assets/doc-header-labels.js' ), true );
+        wp_enqueue_script( 'fc-doc-header', FC_PUBLISHER_URL . 'assets/doc-header.js', [ 'fc-doc-labels' ], fc_asset_version( 'assets/doc-header.js' ), true );
+        wp_enqueue_script( 'fc-doc-import', FC_PUBLISHER_URL . 'assets/doc-import.js', [ 'wp-data', 'wp-api-fetch' ], fc_asset_version( 'assets/doc-import.js' ), true );
         wp_enqueue_script(
             'fc-paste-cleaner',
             FC_PUBLISHER_URL . 'assets/paste-cleaner.js',
-            [ 'wp-data', 'wp-blocks', 'wp-api-fetch', 'wp-notices', 'fc-doc-header' ],
+            [ 'wp-data', 'wp-blocks', 'wp-api-fetch', 'wp-notices', 'fc-doc-header', 'fc-doc-import' ],
             fc_asset_version( 'assets/paste-cleaner.js' ),
             true
         );

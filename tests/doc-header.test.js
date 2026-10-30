@@ -38,5 +38,10 @@ is( 'label with the value on the next line', [ guj.fields.title, guj.count ], [ 
 is( 'a rule line before the header is skipped', h.parse( [ '_____', 'Claim: a', 'Fact: b', 'Body' ] ).count, 3 );
 is( 'an empty label followed by a label stays empty', h.parse( [ 'Synopsis:', 'Claim: a', 'Title:', 'Rating: False', 'Body' ] ).fields.title, undefined );
 
+const ta = h.parse( [ 'Author Name: Chendur Pandian', 'Category: India, Political', 'Synopsis: s', 'Claim: c', 'Fact: f', 'Evidence: we have relevant links', 'URL Slug: a slug',
+    'RATING TEXT \u2013 False', 'Tags: India, China', 'Title: t', '\u0B95\u0BBF\u0BB3\u0BC6\u0baf\u0BCD\u0BAE\u0BCD (Claim): second claim in Tamil', '\u0B83\u0BAA\u0BC7\u0B95\u0BCD\u0B9F\u0BCD\u0B9A\u0BC6\u0B95\u0BCD (FactCheck): second fact in Tamil',
+    'Social Media Caption): a caption', '', '-------------------------------', 'The title again', 'Body' ] );
+is( 'long header: "RATING TEXT", Tamil labels with English in brackets, caption', [ ta.count, ta.rating, ta.fields.claim, ta.fields.fact ], [ 15, 'false', 'c', 'f' ] );
+
 console.log( failed ? failed + ' failed' : 'doc-header: all checks passed' );
 process.exit( failed ? 1 : 0 );

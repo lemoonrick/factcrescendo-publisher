@@ -23,47 +23,16 @@
 ( function ( root ) {
     'use strict';
 
-    var ENGLISH_BRACKET = function ( word ) { return '[^:\\uFF1A\\n()]{0,40}\\(\\s*' + word + '\\s*\\)'; };
+    var LABELS = ( typeof module !== 'undefined' && module.exports ) ? require( './doc-header-labels.js' ) : root.fcDocLabels;
 
-    // [ field, label as a regular expression ]. Labels are only ever read at the start of
-    // a line, or after a space for the fields in MID.
-    var LABELS = [
-        [ 'writer',   'author\\s*name\\s*/\\s*fact\\s*check(?:ed)?\\s*by' ],
-        [ 'writer',   'fact\\s*check(?:ed)?\\s*by|written\\s*by|author\\s*name|author|writer|reporter|लेखक' ],
-        [ 'rating',   'fact\\s*check\\s*rating|rating|result|verdict|रेटिंग|রেটিং|மதிப்பீடு' ],
-        [ 'tags',     'tags?\\s*/\\s*meta\\s*data|tags?|keywords?|meta\\s*data' ],
-        [ 'category', 'categor(?:y|ies)|श्रेणी|বিভাগ|വിഭാഗം|பிரிவு' ],
-        [ 'slug',     'url\\s*slug|slug|permalink' ],
-        [ 'title',    'title|headline|शीर्षक|শিরোনাম|தலைப்பு' ],
-        [ 'claim',    'claim|दावा|দাবি|দাবী|દાવો|പ്രചരണം|പ്രചാരണം|கூற்று|' + ENGLISH_BRACKET( 'claim' ) ],
-        [ 'fact',     'fact\\s*checked|facts?|सत्य|तथ्य|তথ্য\\s*যাচাই|সত্য|വസ്തുത|உண்மை|' + ENGLISH_BRACKET( 'fact(?:\\s*checked)?' ) ],
-        [ 'synopsis', 'synopsis|summary' ],
-        [ 'ignore',   'evidence|meta\\s*description' ]
-    ];
+    var SEP    = '(?:\\s*[:\\uFF1A]|\\s+[\\u2013\\u2014-])\\s*';
+    var fields = LABELS.fields.map( function ( l ) { return l[ 0 ]; } );
+    var FIND   = new RegExp( '(^|\\s)(?:' + LABELS.fields.map( function ( l ) { return '(' + l[ 1 ] + ')'; } ).join( '|' ) + ')' + SEP, 'gi' );
 
-    // Fields that may also start in the middle of a line ("Claim: ... Writer – Name").
-    var MID = { writer: 1, rating: 1, tags: 1, category: 1, slug: 1, title: 1 };
-
-    var SEP = '(?:\\s*[:\\uFF1A]|\\s+[\\u2013\\u2014-])\\s*';
-    var fields = LABELS.map( function ( l ) { return l[ 0 ]; } );
-    var FIND   = new RegExp( '(^|\\s)(?:' + LABELS.map( function ( l ) { return '(' + l[ 1 ] + ')'; } ).join( '|' ) + ')' + SEP, 'gi' );
-
-    var RULE = /^[\s_\-=*–—]{3,}$/;
-
-    // Words that mean one of our ratings. Checked in this order ("Partly False" before "False").
-    var RATINGS = [
-        [ 'partly-false',    /partly|partially|half[\s-]*true|आंशिक|अंशत/i ],
-        [ 'missing-context', /missing\s*context|\bcontext\b/i ],
-        [ 'misleading',      /mislead|भ्रामक|ভ্রান্তিকর/i ],
-        [ 'satire',          /satire|व्यंग्य/i ],
-        [ 'altered',         /altered|manipulated|doctored/i ],
-        [ 'insight',         /insight/i ],
-        [ 'news',            /^\W*news\b/i ],
-        [ 'false',           /false|fake|fabricated|झूठ|गलत|फर्जी|खोट|असत्य|মিথ্যা|பொய்|தவறு/i ]
-    ];
+    var RULE = /^[\s_\-=*\u2013\u2014]{3,}$/;
 
     function rating( text ) {
-        for ( var i = 0; i < RATINGS.length; i++ ) if ( RATINGS[ i ][ 1 ].test( text ) ) return RATINGS[ i ][ 0 ];
+        for ( var i = 0; i < LABELS.ratings.length; i++ ) if ( LABELS.ratings[ i ][ 1 ].test( text ) ) return LABELS.ratings[ i ][ 0 ];
         return '';
     }
 
@@ -80,7 +49,7 @@
             var field = '';
             for ( var g = 2; g < m.length; g++ ) if ( m[ g ] !== undefined ) { field = fields[ g - 2 ]; break; }
             var start = m.index + m[ 1 ].length;
-            if ( start === 0 || MID[ field ] ) found.push( { field: field, start: start, end: FIND.lastIndex } );
+            if ( start === 0 || LABELS.midLine[ field ] ) found.push( { field: field, start: start, end: FIND.lastIndex } );
             if ( m[ 0 ] === '' ) FIND.lastIndex++;
         }
         if ( ! found.length || found[ 0 ].start !== 0 ) return null;
