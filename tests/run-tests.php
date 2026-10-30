@@ -1053,6 +1053,24 @@ section( 'Hide the featured image on article pages' );
 }
 
 
+// ── Embed code that lost its "?" ─────────────────────────────────────────────
+section( 'Embed code that lost its "?"' );
+{
+    $good = 'https://www.facebook.com/plugins/video.php?height=476&href=https%3A%2F%2Fwww.facebook.com%2Freel%2F1145138658205462%2F&show_text=false&width=267&t=0';
+    $tail = '&lt;/iframe&gt;';
+    $mk = function ( $mid ) use ( $tail ) {
+        return para( '&lt;iframe src="https://www.facebook.com/plugins/video.php' . $mid . 'height=476&amp;href=https%3A%2F%2Fwww.facebook.com%2Freel%2F1145138658205462%2F&amp;show_text=false&amp;width=267&amp;t=0" width="267" height="476"&gt;' . $tail );
+    };
+    foreach ( [ 'a line break' => '<br>', 'a space' => ' ', 'nothing' => '', 'a control character' => "\x0B", 'a full-width ?' => "\u{FF1F}" ] as $what => $mid ) {
+        $out = fc_embed_convert( $mk( $mid ) );
+        check( "the ? is put back when $what stands in its place", strpos( $out, 'fc-embed--facebook' ) !== false && strpos( $out, 'plugins/video.php?href=' ) !== false && strpos( $out, 'aspect-ratio:267/476' ) !== false && strpos( $out, '&lt;iframe' ) === false, substr( $out, 0, 300 ) );
+    }
+    check( 'a code that is already right is left as it was', fc_embed_repair_src( $good ) === $good );
+    check( 'an address that only looks similar is not touched', fc_embed_repair_src( 'https://evil.example.com/plugins/video.phpheight=1' ) === 'https://evil.example.com/plugins/video.phpheight=1' );
+    check( 'Awesome Screenshot and Google Maps codes are mended too', fc_embed_repair_src( 'https://www.awesomescreenshot.com/embedid=1&shareKey=2' ) === 'https://www.awesomescreenshot.com/embed?id=1&shareKey=2' && fc_embed_repair_src( 'https://www.google.com/maps/embedpb=!1m1' ) === 'https://www.google.com/maps/embed?pb=!1m1' );
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 echo "\n{$GLOBALS['fc_passes']} passed, {$GLOBALS['fc_failures']} failed\n";
 exit( $GLOBALS['fc_failures'] ? 1 : 0 );

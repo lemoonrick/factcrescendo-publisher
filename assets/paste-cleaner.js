@@ -225,6 +225,19 @@
             .replace( / {2,}/g, ' ' );
     }
 
+    /**
+     * Puts back a "?" that went missing in pasted embed code ("video.php" then a line break,
+     * a space or nothing, then "height=476&href=..."), so the code reads right in the editor.
+     * Only these three known addresses, only when the "?" is really missing. Same rule as on save.
+     */
+    function mendEmbedCode( html ) {
+        var gap = '(?:\\s|&nbsp;|<br\\b[^>]*>|[\\u0000-\\u001f\\u0085\\u2028\\u2029\\uFFFD\\uFF1F])*';
+        return String( html || '' )
+            .replace( new RegExp( '(facebook\\.com/plugins/(?:video|post)\\.php)' + gap + '(?=(?:height|href|width|show_text|t|appId)=)', 'gi' ), '$1?' )
+            .replace( new RegExp( '(awesomescreenshot\\.com/embed)' + gap + '(?=(?:id|shareKey)=)', 'gi' ), '$1?' )
+            .replace( new RegExp( '(google\\.com/maps/embed)' + gap + '(?=pb=)', 'gi' ), '$1?' );
+    }
+
     function plain( html ) {
         return String( html || '' ).replace( /<[^>]*>/g, '' ).replace( /&nbsp;/g, ' ' ).replace( /[\s ​]+/g, ' ' ).trim();
     }
@@ -276,7 +289,7 @@
         var out = [];
         blocks.forEach( function ( b ) {
             if ( b.name === 'core/paragraph' ) {
-                var content = cleanInline( b.attributes.content );
+                var content = mendEmbedCode( cleanInline( b.attributes.content ) );
                 var m = MARK.exec( plain( content ) );
                 if ( m ) { out.push( { marker: { index: +m[ 1 ], group: +m[ 2 ], slot: +m[ 3 ], places: +m[ 4 ] } } ); return; }
                 var lines = splitLines( content );

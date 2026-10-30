@@ -388,9 +388,24 @@ function fc_embed_code_src( $inner ) {
     return preg_replace( '/\s+/', '', $s[2] ); // A long address may have been broken over lines.
 }
 
+/**
+ * Puts back the "?" that went missing in a pasted embed address ("…/video.php" then
+ * "height=476&href=…"). Seen when a Doc's code reaches the editor with a line break, a
+ * space or a stray control character where the "?" should be. Only for the three
+ * addresses whose parameters are known, and only when the "?" really is missing.
+ */
+function fc_embed_repair_src( $src ) {
+    $gap = '[\s\p{Cc}\x{2028}\x{2029}\x{FFFD}\x{FF1F}]*';
+    return preg_replace( [
+        '#(facebook\.com/plugins/(?:video|post)\.php)' . $gap . '(?=(?:height|href|width|show_text|t|appId)=)#iu',
+        '#(awesomescreenshot\.com/embed)' . $gap . '(?=(?:id|shareKey)=)#iu',
+        '#(google\.com/maps/embed)' . $gap . '(?=pb=)#iu',
+    ], '$1?', (string) $src );
+}
+
 /** The ordinary address for an embed code's src, for the sites we trust; '' for anything else. */
 function fc_embed_src_to_url( $src ) {
-    $src = html_entity_decode( $src, ENT_QUOTES, 'UTF-8' );
+    $src = fc_embed_repair_src( html_entity_decode( $src, ENT_QUOTES, 'UTF-8' ) );
     if ( strpos( $src, '//' ) === 0 ) $src = 'https:' . $src;
 
     if ( preg_match( '#^https?://(?:www\.)?(?:facebook\.com/plugins/|awesomescreenshot\.com/embed|archive\.org/embed/)#i', $src ) ) return $src;
