@@ -88,6 +88,30 @@
         p.parentNode.removeChild( p );
     }
 
+    /**
+     * Writers sometimes put a production note inside the table, under a picture. A line
+     * that is only a production note is taken out, so the table is left holding pictures
+     * alone and can become Columns. Nothing else in a table is touched.
+     */
+    function dropNotesInTable( table, out ) {
+        var leaves = Array.prototype.slice.call( table.querySelectorAll( 'p,div,li,td,th' ) ).filter( function ( b ) { return ! b.querySelector( 'p,div,li,table,td,th' ); } );
+        leaves.forEach( function ( leaf ) {
+            // Lines inside the block are separated by <br>; a line with a picture is never looked at.
+            var line = [], lines = [ line ];
+            Array.prototype.forEach.call( leaf.childNodes, function ( n ) {
+                if ( n.nodeType === 1 && n.tagName === 'BR' ) { line = []; lines.push( line ); line.br = n; } else line.push( n );
+            } );
+            lines.forEach( function ( l ) {
+                if ( ! l.length || l.some( function ( n ) { return n.nodeType === 1 && ( n.tagName === 'IMG' || n.querySelector( 'img' ) ); } ) ) return;
+                var html = l.map( function ( n ) { return n.nodeType === 1 ? n.outerHTML : ( n.nodeValue || '' ).replace( /&/g, '&amp;' ).replace( /</g, '&lt;' ); } ).join( '' );
+                if ( plain( html ) === '' || stripProductionNote( html ) !== '' ) return;
+                l.forEach( function ( n ) { if ( n.parentNode ) n.parentNode.removeChild( n ); } );
+                if ( l.br && l.br.parentNode ) l.br.parentNode.removeChild( l.br );
+                out.stats.notes = ( out.stats.notes || 0 ) + 1;
+            } );
+        } );
+    }
+
     function preprocess( html ) {
         var doc  = new DOMParser().parseFromString( html, 'text/html' );
         var body = doc.body;
@@ -111,6 +135,7 @@
         var group = 0;
         Array.prototype.slice.call( body.querySelectorAll( 'table' ) ).forEach( function ( table ) {
             if ( ! table.querySelector( 'img' ) || ! table.parentNode ) return;
+            dropNotesInTable( table, out );
             if ( ! onlySpace( table.textContent ) ) {
                 Array.prototype.forEach.call( table.querySelectorAll( 'img' ), function ( img ) { img.setAttribute( 'data-fc-skip', '1' ); } );
                 return;
@@ -258,7 +283,11 @@
                 if ( lines.length !== 1 || lines[ 0 ] !== b.attributes.content ) stats.tidied++;
                 lines.forEach( function ( line ) {
                     var pn = stripProductionNote( line );
-                    if ( pn === '' ) { stats.notes++; stats.tidied++; return; }
+                    if ( pn === '' ) {
+                        stats.notes++; stats.tidied++;
+                        if ( saysSideBySide( line ) ) out.push( { sideNote: true } );   // "place the screenshots side by side": acted on below, then dropped
+                        return;
+                    }
                     if ( pn !== null ) { line = pn; stats.notes++; stats.tidied++; }
                     out.push( { block: wp.blocks.createBlock( 'core/paragraph', Object.assign( {}, b.attributes, { content: line } ) ) } );
                 } );
@@ -445,12 +474,27 @@
     function takeHeader( items ) {
         if ( ! window.fcDocHeader || ! editorIsEmpty() ) return null;
         var lines = [];
-        for ( var i = 0; i < items.length && items[ i ].block && items[ i ].block.name === 'core/paragraph'; i++ ) {
-            lines.push( plain( items[ i ].block.attributes.content ) );
+        for ( var i = 0; i < items.length && items[ i ].block; i++ ) {
+            var nm = items[ i ].block.name;
+            if ( nm === 'core/separator' ) lines.push( '________' );                       // horizontal lines are ignored
+            else if ( nm === 'core/paragraph' || nm === 'core/heading' ) lines.push( plain( items[ i ].block.attributes.content ) );
+            else break;
         }
         var res = window.fcDocHeader.parse( lines );
         if ( ! res ) return null;
         items.splice( 0, res.count );
+
+        // No "Title" label: the line right above the first picture is the title.
+        if ( ! res.fields.title && items[ 1 ] && items[ 1 ].marker && items[ 1 ].marker.places === 1 && items[ 0 ].block
+             && ( items[ 0 ].block.name === 'core/paragraph' || items[ 0 ].block.name === 'core/heading' ) ) {
+            var t = plain( items[ 0 ].block.attributes.content );
+            if ( t !== '' && t.length <= 250 ) {
+                res.fields.title = t;
+                res.titleGuessed = true;
+                items.splice( 0, 1 );
+            }
+        }
+
         // A picture right after the title, before any text: that is the featured image.
         if ( items[ 0 ] && items[ 0 ].marker && items[ 0 ].marker.places === 1 ) res.featuredIndex = items[ 0 ].marker.index;
         return res;
@@ -504,36 +548,34 @@
     }
 
     var REPORT_CSS =
-        '.fcr{position:fixed;top:72px;left:16px;z-index:100001;width:min(380px,calc(100vw - 32px));max-height:calc(100vh - 96px);overflow:auto;box-sizing:border-box;background:#fff;color:#1e1e1e;border:3px solid #1e1e1e;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.35);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}' +
+        '.fcr{position:fixed;top:72px;left:16px;z-index:100001;width:min(380px,calc(100vw - 32px));max-height:calc(100vh - 96px);overflow:auto;box-sizing:border-box;background:#fff;color:#111;border:1px solid #dcdcde;border-radius:8px;box-shadow:0 2px 14px rgba(0,0,0,.12);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}' +
         '.fcr *{box-sizing:border-box}' +
-        '.fcr-top{display:flex;align-items:center;gap:8px;padding:12px 14px;background:#1e1e1e;color:#fff}' +
-        '.fcr-top h2{flex:1;margin:0;padding:0;font-size:18px;line-height:1.3;color:#fff;font-weight:700}' +
+        '.fcr-top{display:flex;align-items:center;gap:8px;padding:12px 14px;background:#fff;border-bottom:1px solid #dcdcde;color:#111}' +
+        '.fcr-top h2{flex:1;margin:0;padding:0;font-size:18px;line-height:1.3;color:#111;font-weight:700}' +
         '.fcr button{font:inherit;cursor:pointer}' +
-        '.fcr-x{min-width:44px;min-height:44px;border:2px solid #fff;border-radius:6px;background:transparent;color:#fff;font-size:15px;font-weight:600;padding:0 10px}' +
-        '.fcr-x:hover,.fcr-x:focus{background:#fff;color:#1e1e1e}' +
-        '.fcr-sum{margin:0;padding:12px 14px;font-size:19px;font-weight:700;line-height:1.35}' +
-        '.fcr-sum.bad{background:#fde8e8;color:#7a1212;border-bottom:3px solid #b32d2e}' +
-        '.fcr-sum.good{background:#e3f6e8;color:#0b4a22;border-bottom:3px solid #1a7f3c}' +
-        '.fcr h3{margin:0;padding:10px 14px 4px;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:#1e1e1e}' +
-        '.fcr ul{list-style:none;margin:0;padding:0 14px 10px}' +
-        '.fcr li{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid #c3c4c7}' +
+        '.fcr-x{min-width:44px;min-height:40px;border:1px solid #8c8f94;border-radius:6px;background:#fff;color:#111;font-size:15px;font-weight:600;padding:0 12px}' +
+        '.fcr-x:hover,.fcr-x:focus{background:#f0f0f1}' +
+        '.fcr-sum{margin:0;padding:12px 14px 6px;font-size:18px;font-weight:700;line-height:1.35;color:#111;background:#fff}' +
+        '.fcr-sum b{margin-right:6px}.fcr-sum.bad b{color:#b32d2e}.fcr-sum.good b{color:#1a7f3c}' +
+        '.fcr h3{margin:0;padding:12px 14px 2px;font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#50575e}' +
+        '.fcr ul{list-style:none;margin:0;padding:0 14px 8px}' +
+        '.fcr li{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid #ececec}' +
         '.fcr li:first-child{border-top:0}' +
-        '.fcr-ic{flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;color:#fff;margin-top:1px}' +
-        '.fcr-ic.ok{background:#1a7f3c}.fcr-ic.missing{background:#b32d2e}.fcr-ic.check{background:#8a5a00}.fcr-ic.pending{background:#50575e}' +
+        '.fcr-ic{flex:none;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff;margin-top:1px}' +
+        '.fcr-ic.ok{background:#1a7f3c}.fcr-ic.missing{background:#b32d2e}.fcr-ic.check{background:#8a5a00}.fcr-ic.pending{background:#6c7075}' +
         '.fcr-b{flex:1;min-width:0}' +
-        '.fcr-l{font-weight:700;font-size:17px}' +
-        '.fcr-s{display:inline-block;margin-left:8px;font-size:14px;font-weight:700;padding:1px 8px;border-radius:99px;border:2px solid currentColor}' +
-        '.fcr-s.ok{color:#0b4a22}.fcr-s.missing{color:#7a1212}.fcr-s.check{color:#6b4500}.fcr-s.pending{color:#3c434a}' +
-        '.fcr-d{margin:2px 0 0;color:#3c434a;overflow-wrap:anywhere}' +
-        '.fcr-act{display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px 14px;border-top:1px solid #c3c4c7}' +
-        '.fcr-btn{min-height:44px;padding:0 16px;border:2px solid #1e1e1e;border-radius:6px;background:#fff;color:#1e1e1e;font-weight:700}' +
-        '.fcr-btn.main{background:#1e1e1e;color:#fff}' +
-        '.fcr-btn:hover,.fcr-btn:focus{outline:3px solid #2271b1;outline-offset:2px}' +
-        '.fcr-note{margin:0;padding:0 14px 12px;color:#3c434a;font-size:15px}' +
+        '.fcr-l{font-weight:700;font-size:16px;color:#111}' +
+        '.fcr-s{display:inline-block;margin-left:8px;font-size:13px;font-weight:700;padding:0 8px;border-radius:99px;border:1.5px solid currentColor;background:#fff}' +
+        '.fcr-s.ok{color:#146c32}.fcr-s.missing{color:#a02020}.fcr-s.check{color:#7a4f00}.fcr-s.pending{color:#50575e}' +
+        '.fcr-d{margin:2px 0 0;color:#111;overflow-wrap:anywhere}' +
+        '.fcr-act{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px 14px;border-top:1px solid #dcdcde}' +
+        '.fcr-btn{min-height:42px;padding:0 14px;border:1px solid #8c8f94;border-radius:6px;background:#fff;color:#111;font-weight:600}' +
+        '.fcr-btn:hover{background:#f0f0f1}' +
+        '.fcr-btn:focus,.fcr-x:focus,.fcr-mini button:focus{outline:2px solid #2271b1;outline-offset:2px}' +
+        '.fcr-note{margin:0;padding:4px 14px 12px;color:#111;font-size:14px}' +
         '.fcr-mini{position:fixed;top:72px;left:16px;z-index:100001}' +
-        '.fcr-mini button{min-height:48px;padding:0 16px;border:3px solid #1e1e1e;border-radius:10px;background:#fff;color:#1e1e1e;font-weight:700;font-size:16px;box-shadow:0 4px 14px rgba(0,0,0,.3)}' +
-        '.fcr-mini button.bad{background:#fde8e8;color:#7a1212;border-color:#b32d2e}' +
-        '.fcr-mini button:focus,.fcr-mini button:hover{outline:3px solid #2271b1;outline-offset:2px}';
+        '.fcr-mini button{min-height:44px;padding:0 16px;border:1px solid #8c8f94;border-radius:8px;background:#fff;color:#111;font-weight:600;font-size:15px;box-shadow:0 2px 10px rgba(0,0,0,.12)}' +
+        '.fcr-mini button:hover{background:#f0f0f1}';
 
     var LABEL_OF = { ok: 'Filled', missing: 'Needs you', check: 'Please check', pending: 'Working…' };
     var ICON_OF  = { ok: '✔', missing: '✖', check: '!', pending: '…' };
@@ -548,7 +590,7 @@
         if ( ! REPORT ) return;
         REPORT.items.forEach( function ( it ) {
             var now = filledNow( it.key );
-            if ( now === null ) return;
+            if ( now === null || it.state === 'check' ) return;
             if ( now && it.state !== 'ok' ) { it.state = 'ok'; it.detail = 'Filled in.'; }
             else if ( ! now && it.state === 'ok' ) { it.state = 'missing'; it.detail = 'Empty now. Fill it in.'; }
         } );
@@ -574,7 +616,7 @@
         var box;
         if ( REPORT.mini ) {
             box = el( 'div', 'fcr-mini' );
-            var open = el( 'button', bad ? 'bad' : '', 'Doc import: ' + sumText + ' — show' );
+            var open = el( 'button', '', 'Doc import: ' + sumText + ' — show' );
             open.type = 'button';
             open.addEventListener( 'click', function () { REPORT.mini = false; renderReport(); } );
             box.appendChild( open );
@@ -597,7 +639,9 @@
             top.appendChild( x );
             box.appendChild( top );
 
-            var sum = el( 'p', 'fcr-sum ' + ( bad ? 'bad' : 'good' ), ( bad ? '✖ ' : '✔ ' ) + sumText );
+            var sum = el( 'p', 'fcr-sum ' + ( bad ? 'bad' : 'good' ) );
+            sum.appendChild( el( 'b', '', bad ? '\u2716' : '\u2714' ) );
+            sum.appendChild( document.createTextNode( sumText ) );
             sum.setAttribute( 'role', 'status' );
             box.appendChild( sum );
 
@@ -627,7 +671,7 @@
             if ( REPORT.note ) box.appendChild( el( 'p', 'fcr-note', REPORT.note ) );
 
             var act = el( 'div', 'fcr-act' );
-            var side = el( 'button', 'fcr-btn main', 'Open the settings sidebar' );
+            var side = el( 'button', 'fcr-btn', 'Open the settings sidebar' );
             side.type = 'button';
             side.addEventListener( 'click', openSidebar );
             var again = el( 'button', 'fcr-btn', 'Check again' );
@@ -697,7 +741,11 @@
 
         if ( hasText( ed.getEditedPostAttribute( 'title' ) ) ) add( 'title', 'Title', 'ok', 'Kept what you already had.' );
         else if ( ! f.title ) add( 'title', 'Title', 'missing', 'Not found in the Doc. Type it at the top of the editor.' );
-        else { post.title = f.title; add( 'title', 'Title', 'ok', show( f.title ) ); }
+        else {
+            post.title = f.title;
+            if ( res.titleGuessed ) add( 'title', 'Title', 'check', 'No \u201cTitle\u201d label, so the line above the picture was used: ' + show( f.title ) + ' \u2014 please check it.' );
+            else add( 'title', 'Title', 'ok', show( f.title ) );
+        }
 
         if ( hasText( ed.getEditedPostAttribute( 'slug' ) ) ) add( 'slug', 'Slug (web address)', 'ok', 'Kept what you already had.' );
         else if ( ! f.slug ) add( 'slug', 'Slug (web address)', 'missing', 'Not found in the Doc. WordPress will make one from the title, or set it in the sidebar.' );
@@ -781,25 +829,37 @@
     function prepare( html, plainText ) {
         var pre    = preprocess( html );
         var blocks = wp.blocks.pasteHandler( { HTML: pre.html, plainText: plainText, mode: 'BLOCKS' } );
-        var stats  = { tidied: 0, notes: 0, side: 0, duplicates: pre.stats.duplicates, tiny: pre.stats.tiny };
+        var stats  = { tidied: 0, notes: pre.stats.notes || 0, side: 0, duplicates: pre.stats.duplicates, tiny: pre.stats.tiny };
+        if ( stats.notes ) stats.tidied++;
         var items  = tidy( blocks, stats );
 
-        // A "side by side" note right above two or more pictures: they go in a row, the note goes.
-        // (The same happens on save; doing it here shows it straight away.)
-        for ( var i = 0; i < items.length; i++ ) {
-            var it = items[ i ];
-            if ( ! it.block || it.block.name !== 'core/paragraph' ) continue;
-            var c = String( it.block.attributes.content );
-            if ( ! saysSideBySide( c ) || ! isNoteLike( c ) ) continue;
+        // A "side by side" note next to two or more pictures: they go in a row, the note goes.
+        // A note written as a plain line works from above; a production note ("place the
+        // screenshots side by side") works from below or above. (The same happens on save.)
+        function singles( from, step ) {
             var run = [];
-            for ( var j = i + 1; j < items.length && items[ j ].marker && items[ j ].marker.places === 1; j++ ) run.push( items[ j ] );
-            if ( run.length < 2 ) continue;
-            var g = 100000 + i;
-            run.forEach( function ( r, k ) { r.marker.group = g; r.marker.slot = k; r.marker.places = run.length; } );
-            items.splice( i, 1 );
-            stats.side++;
-            stats.tidied++;
-            i--;
+            for ( var j = from; j >= 0 && j < items.length && items[ j ].marker && items[ j ].marker.places === 1; j += step ) run.push( items[ j ] );
+            return step < 0 ? run.reverse() : run;
+        }
+        for ( var i = 0; i < items.length; i++ ) {
+            var it = items[ i ], run = [];
+            if ( it.sideNote ) {
+                run = singles( i - 1, -1 );
+                if ( run.length < 2 ) run = singles( i + 1, 1 );
+            } else {
+                if ( ! it.block || it.block.name !== 'core/paragraph' ) continue;
+                var c = String( it.block.attributes.content );
+                if ( ! saysSideBySide( c ) || ! isNoteLike( c ) ) continue;
+                run = singles( i + 1, 1 );
+                if ( run.length < 2 ) continue;
+            }
+            if ( run.length >= 2 ) {
+                var g = 100000 + i;
+                run.forEach( function ( r, k ) { r.marker.group = g; r.marker.slot = k; r.marker.places = run.length; } );
+                stats.side++;
+                stats.tidied++;
+            }
+            if ( it.sideNote || run.length >= 2 ) { items.splice( i, 1 ); i--; }
         }
 
         // The Doc's header lines (Claim, Rating, Title ...) become the Fact Check fields, and leave the article.

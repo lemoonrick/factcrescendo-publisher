@@ -97,11 +97,22 @@
         var out = {}, count = 0, started = false;
         for ( var i = 0; i < lines.length; i++ ) {
             var line = String( lines[ i ] || '' );
-            if ( clean( line ) === '' || ( started && RULE.test( line ) ) ) { if ( started ) count = i + 1; continue; }
+            if ( clean( line ) === '' || RULE.test( line ) ) { if ( started ) count = i + 1; continue; }
             var ps = pieces( line );
             if ( ! ps ) break;
             started = true;
             count = i + 1;
+
+            // "Title:" with nothing after it: the value is the next line that isn't itself a label.
+            var last = ps[ ps.length - 1 ];
+            if ( last.value === '' && last.field !== 'ignore' && last.field !== 'synopsis' ) {
+                for ( var j = i + 1; j < lines.length; j++ ) {
+                    var nxt = String( lines[ j ] || '' );
+                    if ( clean( nxt ) === '' || RULE.test( nxt ) ) continue;
+                    if ( ! pieces( nxt ) ) { last.value = clean( nxt ); count = j + 1; i = j; }
+                    break;
+                }
+            }
             ps.forEach( function ( p ) { if ( p.field !== 'ignore' && p.value !== '' && ! out[ p.field ] ) out[ p.field ] = p.value; } );
         }
         var found = Object.keys( out );

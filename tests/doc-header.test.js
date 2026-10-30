@@ -32,5 +32,11 @@ is( 'one label alone is not enough', h.parse( [ 'Claim: only this', 'Then the ar
 is( 'a sentence that starts with a label word is not a label', h.parse( [ 'Production notes are kept by the team.', 'Claim: x', 'Fact: y' ] ), null );
 is( 'a word that merely starts like a label is not a label', h.parse( [ 'Claims were made online, he said', 'Title page of the report', 'Tagsomething: x' ] ), null );
 
+const guj = h.parse( [ 'Author Name / Fact Check By: Vikas Vyas', 'Category: National', 'Fact Check Rating: Misleading', 'Tags: Odisha, Tornado', 'Claim: c', 'Fact: f',
+    'URL Slug: the video', '_____', '', 'Title:', '', 'Gujarati title line', 'Body starts' ] );
+is( 'label with the value on the next line', [ guj.fields.title, guj.count ], [ 'Gujarati title line', 12 ] );
+is( 'a rule line before the header is skipped', h.parse( [ '_____', 'Claim: a', 'Fact: b', 'Body' ] ).count, 3 );
+is( 'an empty label followed by a label stays empty', h.parse( [ 'Synopsis:', 'Claim: a', 'Title:', 'Rating: False', 'Body' ] ).fields.title, undefined );
+
 console.log( failed ? failed + ' failed' : 'doc-header: all checks passed' );
 process.exit( failed ? 1 : 0 );
