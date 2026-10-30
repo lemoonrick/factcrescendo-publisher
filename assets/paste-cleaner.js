@@ -588,6 +588,14 @@
         var leaked  = wp.blocks.serialize( items.filter( function ( it ) { return it.block; } ).map( function ( it ) { return it.block; } ) ).indexOf( '@@FCIMG' ) !== -1;
         if ( leaked || markers !== pre.images.length ) return null;
 
+        // No picture after the title but a "Feature Image: https://…" line: that picture is fetched
+        // like a pasted one (it has no place in the article) and becomes the featured image.
+        if ( header && header.featuredIndex === undefined && /^https?:\/\/\S+$/i.test( header.fields.image || '' ) ) {
+            header.featuredIndex = pre.images.length;
+            header.featuredFromLink = true;
+            pre.images.push( { src: header.fields.image, alt: '', group: -1 } );
+        }
+
         return { pre: pre, items: items, stats: stats, header: header };
     }
 

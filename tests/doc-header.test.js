@@ -32,6 +32,18 @@ is( 'assamese doc: label written twice is dropped', [ asm2.fields.claim, asm2.fi
 is( 'assamese rating word', h.parse( [ 'Claim: c', 'ফলাফল: মিছা' ] ).rating, 'false' );
 const mal2 = h.parse( [ 'Author: K. Mukundan', 'Category: Communal', 'Result: False', 'URL Slug: s', 'പ്രചരണം(Claim): c', 'വസ്തുത(Fact): f', 'SM Caption: cap', 'body' ] );
 is( 'malayalam doc: SM Caption leaves, Result is the rating', [ mal2.count, mal2.rating, mal2.fields.fact, mal2.fields.writer ], [ 7, 'false', 'f', 'K. Mukundan' ] );
+const hi = h.parse( [ 'Name- Sarita Samal', 'Misleading | Poltical', 'Slug- The video of a bridge collapsing is old; a falsehood was spread.', 'Tags- उत्तराखंड,  पिथौरागढ़ ,ओवरलोड ट्रक, Uttarakhand',
+    'Claim- उत्तराखंड के पिथौरागढ़ में पुल ढह गया।', 'Fact Check- वायरल पोस्ट फर्जी साबित है।', 'पिथौरागढ़ में ब्रिज टूटने का वीडियो पुराना...' ] );
+is( 'hindi: "Name-", "Misleading | Category", "Slug-", "Fact Check-"', [ hi.fields.writer, hi.rating, hi.fields.category, hi.fields.slug, hi.fields.tags.length, hi.fields.claim, hi.fields.fact, hi.count ],
+    [ 'Sarita Samal', 'misleading', 'Poltical', 'The video of a bridge collapsing is old; a falsehood was spread.', 4, 'उत्तराखंड के पिथौरागढ़ में पुल ढह गया।', 'वायरल पोस्ट फर्जी साबित है।', 6 ] );
+const hi2 = h.parse( [ 'Priyanka Sinha', 'False- International', 'Slug- s', 'Claim- c', 'Fact Check- f', 'Headline- t', 'Byline- b', 'body' ] );
+is( 'hindi: a name alone on the first line is the writer; Headline, Byline', [ hi2.fields.writer, hi2.rating, hi2.fields.category, hi2.fields.title, hi2.fields.excerpt, hi2.count ],
+    [ 'Priyanka Sinha', 'false', 'International', 't', 'b', 7 ] );
+const sle = h.parse( [ 'SYNOPSIS: s', 'WRITER: w', 'RATING: False', 'Feature Image: https://example.com/a.webp', 'Title: t', 'Join our WhatsApp channel' ] );
+is( 'SL english: Feature Image link, header goes on to the Title', [ sle.fields.image, sle.fields.title, sle.count ], [ 'https://example.com/a.webp', 't', 5 ] );
+is( 'lines without labels alone are never a header', [ h.parse( [ 'Fake news – a big problem', 'Priyanka Sinha', 'body' ] ), h.parse( [ 'Priyanka Sinha', 'False- International', 'body' ] ) ], [ null, null ] );
+is( 'an article starting with a name-like line is left alone', h.parse( [ 'Breaking News Today', 'The video shows a bridge.' ] ), null );
+is( 'a dash inside a word is not a separator', h.parse( [ 'Claim-based reporting is hard', 'Rating: False' ] ), null );
 is( 'result inside a claim does not cut it', h.parse( [ 'Claim: the election result – BJP won', 'Rating: False' ] ).fields.claim, 'the election result – BJP won' );
 is( 'result: a short rating word is the rating', h.parse( [ 'Claim: c', 'Result: Partly False' ] ).rating, 'partly-false' );
 

@@ -11,10 +11,11 @@
     var inBrackets = function ( word ) { return '[^:\\uFF1A\\n()]{0,40}\\(\\s*(?:' + word + ')\\s*\\)'; };
 
     var labels = {
-        // [ field, label ] in the order they are tried.
+        // [ field, label, 'start' = only at the start of a line ] in the order they are tried.
         fields: [
             [ 'writer',   'author\\s*name\\s*/\\s*fact\\s*check(?:ed)?\\s*by' ],
             [ 'writer',   'fact\\s*check(?:ed)?\\s*by|written\\s*by|author\\s*name|author|writer|reporter|लेखक' ],
+            [ 'writer',   'name', 'start' ],
             [ 'rating',   'fact\\s*check\\s*rating|rating\\s*text|rating|रेटिंग|রেটিং|மதிப்பீடு' ],
             // "Result: False" is a rating (Malayalam), "Result: The video is old…" is the fact (Assamese).
             [ 'result',   'result|verdict|ফলাফল' ],
@@ -23,8 +24,10 @@
             [ 'slug',     'url\\s*slug|slug|permalink' ],
             [ 'title',    'title|headline|शीर्षक|শিরোনাম|தலைப்பு' ],
             [ 'claim',    'claim|दावा|দাবি|দাবী|દાવો|പ്രചരണം|പ്രചാരണം|கூற்று|' + inBrackets( 'claim' ) ],
-            [ 'fact',     'fact\\s*checked|facts?|सत्य|तथ्य|তথ্য\\s*যাচাই|সত্য|വസ്തുത|உண்மை|' + inBrackets( 'fact\\s*check(?:ed)?|fact' ) ],
+            [ 'fact',     'fact\\s*check(?:ed)?|facts?|सत्य|तथ्य|তথ্য\\s*যাচাই|সত্য|വസ്തുത|உண்மை|' + inBrackets( 'fact\\s*check(?:ed)?|fact' ) ],
             [ 'synopsis', 'synopsis|summary' ],
+            [ 'excerpt',  'byline|sub\\s*title|sub\\s*heading|excerpt' ],
+            [ 'image',    'feature(?:d)?\\s*image|feature\\s*photo' ],
             // Production lines that are recognised so they leave the article, but are not used.
             [ 'ignore',   'evidence|meta\\s*description|(?:social\\s*media|sm)\\s*caption\\)?' ]
         ],

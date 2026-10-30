@@ -32,6 +32,7 @@
     var REPORT = null;   // the open report: { items, note, box }
 
     function hasText( v ) { return String( v || '' ).trim() !== ''; }
+    function show( v ) { v = String( v ); return v.length > 110 ? v.slice( 0, 107 ) + '…' : v; }
 
     /** Looks at the editor as it is right now. null = this item can't be re-checked. */
     function filledNow( key ) {
@@ -42,6 +43,7 @@
             case 'fact':   return hasText( meta.fc_fact );
             case 'title':  return hasText( ed.getEditedPostAttribute( 'title' ) );
             case 'slug':   return hasText( ed.getEditedPostAttribute( 'slug' ) );
+            case 'excerpt': return hasText( ed.getEditedPostAttribute( 'excerpt' ) );
             case 'tags':   return ( ed.getEditedPostAttribute( 'tags' ) || [] ).length > 0;
             case 'category':
                 var c = ed.getEditedPostAttribute( 'categories' ) || [];
@@ -217,8 +219,14 @@
         if ( r && ! r.failed && r.id && ! wp.data.select( 'core/editor' ).getEditedPostAttribute( 'featured_media' ) ) {
             wp.data.dispatch( 'core/editor' ).editPost( { featured_media: r.id } );
         }
-        if ( filledNow( 'featured' ) ) { item.state = 'ok'; item.detail = 'The picture right after the title was used, and moved out of the article.'; }
-        else { item.state = 'missing'; item.detail = 'The picture after the title could not be used. Set the featured image in the sidebar.'; }
+        if ( filledNow( 'featured' ) ) {
+            item.state = 'ok';
+            item.detail = res.featuredFromLink ? 'The Doc’s Feature Image link was used.' : 'The picture right after the title was used, and moved out of the article.';
+        } else {
+            item.state = 'missing';
+            item.detail = res.featuredFromLink ? 'The Feature Image link could not be loaded: ' + show( res.fields.image ) + ' — set it in the sidebar.'
+                                               : 'The picture after the title could not be used. Set the featured image in the sidebar.';
+        }
         renderReport();
     }
 
@@ -233,7 +241,6 @@
         var items = [], put = {}, post = {};
 
         function add( key, label, state, detail ) { items.push( { key: key, label: label, state: state, detail: detail || '' } ); }
-        function show( v ) { v = String( v ); return v.length > 110 ? v.slice( 0, 107 ) + '…' : v; }
 
         function metaField( key, id, label, value, how, shown ) {
             if ( hasText( meta[ key ] ) ) { add( id, label, 'ok', 'Kept what you already had: ' + show( shown || meta[ key ] ) ); return; }
@@ -265,10 +272,17 @@
         if ( hasText( ed.getEditedPostAttribute( 'slug' ) ) ) add( 'slug', 'Slug (web address)', 'ok', 'Kept what you already had.' );
         else if ( ! f.slug ) add( 'slug', 'Slug (web address)', 'missing', 'Not found in the Doc. WordPress will make one from the title, or set it in the sidebar.' );
         else { post.slug = f.slug; add( 'slug', 'Slug (web address)', 'ok', show( f.slug ) ); }
+
+        // A "Byline" / "Subtitle" line: only when the Doc has one, into the Excerpt box.
+        if ( f.excerpt ) {
+            if ( hasText( ed.getEditedPostAttribute( 'excerpt' ) ) ) add( 'excerpt', 'Excerpt (Byline)', 'ok', 'Kept what you already had.' );
+            else { post.excerpt = f.excerpt; add( 'excerpt', 'Excerpt (Byline)', 'ok', show( f.excerpt ) ); }
+        }
         if ( Object.keys( post ).length ) dp.editPost( post );
 
-        // Featured image: the picture right after the title, when the Doc has one.
+        // Featured image: the picture right after the title, or the Doc's "Feature Image" link.
         if ( ed.getEditedPostAttribute( 'featured_media' ) ) add( 'featured', 'Featured image', 'ok', 'Kept what you already had.' );
+        else if ( res.featuredFromLink ) add( 'featured', 'Featured image', 'pending', 'Using the Doc’s Feature Image link. Uploading it…' );
         else if ( res.featuredIndex !== undefined ) add( 'featured', 'Featured image', 'pending', 'Using the picture right after the title. Uploading it…' );
         else add( 'featured', 'Featured image', 'missing', 'No picture right after the title. Set it in the sidebar under Featured image.' );
 
@@ -336,7 +350,7 @@
         }
 
         // Order on screen: the things that matter most first.
-        var order = [ 'rating', 'claim', 'fact', 'title', 'slug', 'featured', 'category', 'tags', 'author' ];
+        var order = [ 'rating', 'claim', 'fact', 'title', 'slug', 'excerpt', 'featured', 'category', 'tags', 'author' ];
         items.sort( function ( a, b ) { return order.indexOf( a.key ) - order.indexOf( b.key ); } );
 
         var note = 'The Doc’s header lines were taken out of the article.';

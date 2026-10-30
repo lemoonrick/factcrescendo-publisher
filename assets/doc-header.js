@@ -25,8 +25,10 @@
 
     var LABELS = ( typeof module !== 'undefined' && module.exports ) ? require( './doc-header-labels.js' ) : root.fcDocLabels;
 
-    var SEP    = '(?:\\s*[:\\uFF1A]|\\s+[\\u2013\\u2014-])\\s*';
+    // ":" / " – " / "Slug- " (a dash straight after the label needs a space after it).
+    var SEP    = '(?:\\s*[:\\uFF1A]|\\s+[\\u2013\\u2014-]|[\\u2013\\u2014-](?=\\s))\\s*';
     var fields = LABELS.fields.map( function ( l ) { return l[ 0 ]; } );
+    var START  = LABELS.fields.map( function ( l ) { return l[ 2 ] === 'start'; } );
     var FIND   = new RegExp( '(^|\\s)(?:' + LABELS.fields.map( function ( l ) { return '(' + l[ 1 ] + ')'; } ).join( '|' ) + ')' + SEP, 'gi' );
 
     var RULE = /^[\s_\-=*\u2013\u2014]{3,}$/;
@@ -46,16 +48,34 @@
         var found = [], m;
         FIND.lastIndex = 0;
         while ( ( m = FIND.exec( text ) ) ) {
-            var field = '';
-            for ( var g = 2; g < m.length; g++ ) if ( m[ g ] !== undefined ) { field = fields[ g - 2 ]; break; }
+            var field = '', g;
+            for ( g = 2; g < m.length; g++ ) if ( m[ g ] !== undefined ) { field = fields[ g - 2 ]; break; }
             var start = m.index + m[ 1 ].length;
-            if ( start === 0 || LABELS.midLine[ field ] ) found.push( { field: field, start: start, end: FIND.lastIndex } );
+            if ( start === 0 || ( LABELS.midLine[ field ] && ! START[ g - 2 ] ) ) found.push( { field: field, start: start, end: FIND.lastIndex } );
             if ( m[ 0 ] === '' ) FIND.lastIndex++;
         }
-        if ( ! found.length || found[ 0 ].start !== 0 ) return null;
+        if ( ! found.length || found[ 0 ].start !== 0 ) return ratingLine( text );
         return found.map( function ( f, i ) {
             return { field: f.field, value: clean( text.slice( f.end, i + 1 < found.length ? found[ i + 1 ].start : text.length ) ) };
         } );
+    }
+
+    function words( s ) { return clean( s ).split( ' ' ).length; }
+
+    /** A line with no label that is only a rating, maybe with the category: "False- International", "Misleading | Political". */
+    function ratingLine( text ) {
+        var m = clean( text ).match( /^([^|:：–—-]+?)\s*(?:[|:：–—-]\s*([^|:]+))?$/ );
+        if ( ! m || ! rating( m[ 1 ] ) || words( m[ 1 ] ) > 3 || ( m[ 2 ] && words( m[ 2 ] ) > 4 ) ) return null;
+        var out = [ { field: 'rating', value: clean( m[ 1 ] ), unlabelled: true } ];
+        if ( m[ 2 ] ) out.push( { field: 'category', value: clean( m[ 2 ] ), unlabelled: true } );
+        return out;
+    }
+
+    /** A name on its own as the very first line ("Priyanka Sinha"): the writer, when header lines follow. */
+    function looksLikeName( line ) {
+        var s = clean( line );
+        return s.length <= 40 && words( s ) <= 4 && ! /[0-9:：|,?!।"“”]/.test( s ) && ! /[.\-–—]$/.test( s )
+            && ! /(^|[\s-])[a-z]/.test( s );   // every English word starts with a capital, as names do
     }
 
     function split( list ) {
@@ -63,14 +83,19 @@
     }
 
     function parse( lines ) {
-        var out = {}, count = 0, started = false;
+        var out = {}, count = 0, started = false, labelled = false;
         for ( var i = 0; i < lines.length; i++ ) {
             var line = String( lines[ i ] || '' );
             if ( clean( line ) === '' || RULE.test( line ) ) { if ( started ) count = i + 1; continue; }
             var ps = pieces( line );
+            if ( ! ps && ! started && looksLikeName( line ) ) {
+                var after = lines.slice( i + 1 ).filter( function ( l ) { return clean( l ) !== '' && ! RULE.test( l ); } )[ 0 ];
+                if ( after !== undefined && pieces( after ) ) ps = [ { field: 'writer', value: clean( line ), unlabelled: true } ];
+            }
             if ( ! ps ) break;
             started = true;
             count = i + 1;
+            if ( ! ps[ 0 ].unlabelled ) labelled = true;
 
             // "Title:" with nothing after it: the value is the next line that isn't itself a label.
             var last = ps[ ps.length - 1 ];
@@ -91,7 +116,7 @@
             } );
         }
         var found = Object.keys( out );
-        if ( ! started || found.length < 2 ) return null;
+        if ( ! labelled || found.length < 2 ) return null;   // lines without labels alone are never a header
 
         var result = { count: count, fields: out, rating: '', factFromSynopsis: false };
         if ( out.rating ) result.rating = rating( out.rating );
