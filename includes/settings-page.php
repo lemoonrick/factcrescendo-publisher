@@ -36,6 +36,7 @@ function fc_register_settings() {
     fc_register_choice( 'fc_enable_audio', [ '1', '0' ], '1' );
     fc_register_choice( 'fc_auto_embeds', [ '1', '0' ], '1' );
     fc_register_choice( 'fc_webp_uploads', [ '1', '0' ], '1' );
+    fc_register_choice( 'fc_hide_featured', [ '1', '0' ], '1' );
     fc_register_choice( 'fc_clean_paste', [ '1', '0' ], '1' );
     fc_register_choice( 'fc_webp_quality', [ '70', '82', '90' ], '82' );
 
@@ -248,6 +249,12 @@ function fc_render_settings_page() {
                 <h2>Pasting from Word, Google Docs and LibreOffice</h2>
                 <p>Cleans the pasted article as it goes in: each picture gets its own block and is added to the Media Library, repeated pictures are kept once, lines become paragraphs, and empty lines and stray spaces are removed. Pictures that were side by side in the document stay side by side.</p>
                 <?php fc_settings_switch( 'fc_clean_paste', '1', 'Clean pasted articles', 'Only pastes from these programs are touched. Text copied inside WordPress is never changed.' ); ?>
+            </div>
+
+            <div class="fc-box">
+                <h2>Featured image on article pages</h2>
+                <p>The fact card already shows the photo, so the theme\'s own copy at the top of every article is hidden. This replaces a "hide featured image" plugin and its tick box on each post. The image is not deleted: it stays on the post, in the Media Library and in social previews, and lists of posts still show it.</p>
+                <?php fc_settings_switch( 'fc_hide_featured', '1', 'Hide the featured image on article pages', 'Applies to every post at once. Switch off to show it again.' ); ?>
             </div>
 
             <div class="fc-box">

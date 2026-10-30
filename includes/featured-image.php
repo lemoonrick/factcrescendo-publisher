@@ -331,3 +331,24 @@ function fc_featured_load( $file ) {
     @unlink( $saved['path'] );
     return $img ?: null;
 }
+
+
+// ── Hiding the featured image on article pages ───────────────────────────────
+
+/**
+ * The theme shows the featured image at the top of every article, and the fact
+ * card already shows the photo. This blanks the theme's copy on the article
+ * page of a post (the same job a "hide featured image" plugin does, for every
+ * post at once). Nothing else changes: the image stays in the Media Library
+ * and on the post, social previews still use it, archive and related-post
+ * lists keep theirs, and the fact card builds its own picture from the
+ * attachment (see fc_build_fact_card()). Never runs in the admin or the editor.
+ */
+add_filter( 'post_thumbnail_html', 'fc_hide_featured_on_article', 10, 2 );
+
+function fc_hide_featured_on_article( $html, $post_id ) {
+    if ( get_option( 'fc_hide_featured', '1' ) !== '1' ) return $html;
+    if ( is_admin() || ! is_singular( 'post' ) ) return $html;
+    if ( (int) $post_id !== (int) get_queried_object_id() ) return $html;   // lists of other posts keep theirs
+    return '';
+}

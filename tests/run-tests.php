@@ -1022,6 +1022,37 @@ $big = new WP_REST_Request( 'GET', '/fc/v1/posts' ); $big->set_param( 'page', 99
 check( 'list API page number is capped', rest_do_request( $big )->get_data()['page'] === 500 );
 
 
+// ── Hide the featured image on article pages ─────────────────────────────────
+section( 'Hide the featured image on article pages' );
+{
+    $att = wp_insert_attachment( [ 'post_mime_type' => 'image/png', 'post_title' => 'x', 'post_status' => 'inherit' ], 'x.png' );
+    $hp  = make_post();
+    $op  = make_post();
+    set_post_thumbnail( $hp, $att );
+    set_post_thumbnail( $op, $att );
+    $on_article = function ( $id ) {
+        global $wp_query, $wp_the_query;
+        $wp_query = new WP_Query( [ 'p' => $id ] ); $wp_the_query = $wp_query;
+        $wp_query->the_post();
+        $html = get_the_post_thumbnail( $id );
+        wp_reset_postdata();
+        return $html;
+    };
+    update_option( 'fc_hide_featured', '1' );
+    check( 'hidden on the post\'s own article page', $on_article( $hp ) === '' );
+    global $wp_query, $wp_the_query;
+    $wp_query = new WP_Query( [ 'p' => $hp ] ); $wp_the_query = $wp_query; $wp_query->the_post();
+    check( 'another post\'s picture (a related list) is kept', fc_hide_featured_on_article( '<img>', $op ) === '<img>' );
+    wp_reset_postdata();
+    $wp_query = new WP_Query( [ 'post_type' => 'post' ] ); $wp_the_query = $wp_query;   // a list page, not an article
+    check( 'outside an article page nothing is hidden', fc_hide_featured_on_article( '<img>', $hp ) === '<img>' );
+    update_option( 'fc_hide_featured', '0' );
+    check( 'switched off: shown again', $on_article( $hp ) !== '' );
+    delete_option( 'fc_hide_featured' );
+    check( 'default is on', $on_article( $hp ) === '' );
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 echo "\n{$GLOBALS['fc_passes']} passed, {$GLOBALS['fc_failures']} failed\n";
 exit( $GLOBALS['fc_failures'] ? 1 : 0 );
