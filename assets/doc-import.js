@@ -304,8 +304,8 @@
             } )() );
         }
 
-        // Categories: each one must already exist on this site (a Doc may list several).
-        var names = f.category ? f.category.split( /[,،;|]+/ ).map( function ( n ) { return n.trim(); } ).filter( Boolean ) : [];
+        // Categories: each one must already exist on this site. A Doc may list several ("India, Political", "National/Social").
+        var names = f.category ? f.category.split( /[,\u060C;|\/]+/ ).map( function ( n ) { return n.trim(); } ).filter( Boolean ) : [];
         if ( ! names.length ) add( 'category', 'Category', 'missing', 'Not found in the Doc. Choose it in the sidebar under Categories.' );
         else {
             add( 'category', 'Category', 'pending', 'Looking…' );

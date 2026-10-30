@@ -23,12 +23,14 @@
  *   - The Doc's header lines (Claim, Rating, Title ...) were typed into the article
  *                                      → read by doc-header.js, put in the post and
  *                                        reported by doc-import.js, and taken out of the text.
+ *   - Horizontal lines (drawn, or typed as ____ / ----)
+ *                                      → removed; our articles never have them.
  *   - Lines glued together, blank lines, no-break spaces and other leftovers
  *                                      → one line becomes one paragraph; empty
  *                                        paragraphs and stray spaces are removed.
  *
  * Only pastes that look like they came from Word, Google Docs or LibreOffice
- * (or that carry pictures) are handled. Anything else, including text copied
+ * are handled. Anything else, including text copied
  * inside the editor, is left to WordPress. Plain JavaScript, no build step.
  *
  * Careful: zero-width joiners (U+200C, U+200D) are never removed. Hindi,
@@ -288,6 +290,8 @@
         return t !== '' && ( t.split( /\s+/ ).length <= 6 || /^[\[\(\*\{]/.test( t ) || /\bnote\b/.test( t ) );
     }
 
+    var RULE_LINE = /^[_\-=*\u2013\u2014\s]{3,}$/;
+
     function tidy( blocks, stats ) {
         var out = [];
         blocks.forEach( function ( b ) {
@@ -298,6 +302,7 @@
                 var lines = splitLines( content );
                 if ( lines.length !== 1 || lines[ 0 ] !== b.attributes.content ) stats.tidied++;
                 lines.forEach( function ( line ) {
+                    if ( RULE_LINE.test( plain( line ) ) ) { stats.tidied++; return; }   // a typed line of ____ or ----
                     var pn = stripProductionNote( line );
                     if ( pn === '' ) {
                         stats.notes++; stats.tidied++;
@@ -307,6 +312,8 @@
                     if ( pn !== null ) { line = pn; stats.notes++; stats.tidied++; }
                     out.push( { block: wp.blocks.createBlock( 'core/paragraph', Object.assign( {}, b.attributes, { content: line } ) ) } );
                 } );
+            } else if ( b.name === 'core/separator' ) {
+                stats.tidied++;                                    // horizontal lines never belong in our articles
             } else if ( b.name === 'core/heading' ) {
                 var h = cleanInline( b.attributes.content );
                 if ( plain( h ) !== '' ) out.push( { block: wp.blocks.createBlock( 'core/heading', Object.assign( {}, b.attributes, { content: h } ) ) } );
@@ -492,8 +499,7 @@
         var lines = [];
         for ( var i = 0; i < items.length && items[ i ].block; i++ ) {
             var nm = items[ i ].block.name;
-            if ( nm === 'core/separator' ) lines.push( '________' );                       // horizontal lines are ignored
-            else if ( nm === 'core/paragraph' || nm === 'core/heading' ) lines.push( plain( items[ i ].block.attributes.content ) );
+            if ( nm === 'core/paragraph' || nm === 'core/heading' ) lines.push( plain( items[ i ].block.attributes.content ) );
             else break;
         }
         var res = window.fcDocHeader.parse( lines );
