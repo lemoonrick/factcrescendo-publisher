@@ -496,7 +496,8 @@ function fc_embed_note_key( $text ) {
     $text = html_entity_decode( wp_strip_all_tags( (string) $text ), ENT_QUOTES, 'UTF-8' );
     $text = function_exists( 'mb_strtolower' ) ? mb_strtolower( $text ) : strtolower( $text );
     $text = preg_replace( '/[\s\x{00A0}\-–—_]+/u', ' ', $text );
-    return trim( $text, " \t:.;,!*()[]{}\"'“”‘’|>" );
+    $text = trim( $text, " \t:.;,!*()[]{}\"'“”‘’|>" );
+    return preg_replace( '/^please\s+/u', '', $text );   // "Please embed" is the note "embed"
 }
 
 /** The blocks that stand in for a link, ready to save, or '' when the link isn't one we embed. */

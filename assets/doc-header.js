@@ -82,7 +82,13 @@
                     break;
                 }
             }
-            ps.forEach( function ( p ) { if ( p.field !== 'ignore' && p.value !== '' && ! out[ p.field ] ) out[ p.field ] = p.value; } );
+            ps.forEach( function ( p ) {
+                // "Claim: দাবী: …" — the same label again in the writer's language.
+                var again = pieces( p.value );
+                if ( again && again.length === 1 && ( again[ 0 ].field === p.field || again[ 0 ].field === 'result' ) ) p.value = again[ 0 ].value;
+                if ( p.field === 'result' ) p.field = ( rating( p.value ) && p.value.split( ' ' ).length <= 4 ) ? 'rating' : 'fact';
+                if ( p.field !== 'ignore' && p.value !== '' && ! out[ p.field ] ) out[ p.field ] = p.value;
+            } );
         }
         var found = Object.keys( out );
         if ( ! started || found.length < 2 ) return null;

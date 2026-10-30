@@ -936,6 +936,8 @@ check( 'a real sentence saying "side by side" stays, and changes nothing (only a
 $x = get_post_field( 'post_content', make_post( [], para( 'Side by side' ) . img_block( 1 ) . para( '' ) . img_block( 2 ) ) );
 check( 'an empty line between the pictures does not stop it', layout( $x ) === '2/2' );
 check( 'a "side by side" note above a single picture makes no columns', strpos( side( 'Side by side', 1 ), 'wp:columns' ) === false );
+$x = get_post_field( 'post_content', make_post( [], para( 'Please Embed' ) . img_block( 1 ) . para( 'Please share this with your friends.' ) . img_block( 2 ) ) );
+check( '"Please Embed" above a picture is deleted; a real "Please …" sentence stays', strpos( $x, 'Please Embed' ) === false && strpos( $x, 'Please share this with your friends.' ) !== false );
 
 $sl = para( '<strong>[PRODUCTION NOTE: These three near-identical posts could be merged.</strong>' )
     . para( '<a href="https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-135-13.webp">https://srilanka.factcrescendo.com/wp-content/uploads/2026/10/image-135-13.webp</a>' )

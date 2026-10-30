@@ -253,7 +253,7 @@ function fc_render_settings_page() {
 
             <div class="fc-box">
                 <h2>Featured image on article pages</h2>
-                <p>The fact card already shows the photo, so the theme\'s own copy at the top of every article is hidden. This replaces a "hide featured image" plugin and its tick box on each post. The image is not deleted: it stays on the post, in the Media Library and in social previews, and lists of posts still show it.</p>
+                <p>The fact card already shows the photo, so the theme's own copy at the top of every article is hidden. This replaces a "hide featured image" plugin and its tick box on each post. The image is not deleted: it stays on the post, in the Media Library and in social previews, and lists of posts still show it.</p>
                 <?php fc_settings_switch( 'fc_hide_featured', '1', 'Hide the featured image on article pages', 'Applies to every post at once. Switch off to show it again.' ); ?>
             </div>
 

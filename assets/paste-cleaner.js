@@ -496,14 +496,21 @@
     /** Takes the header lines off the top of the paste (items) and returns what they said, or null. */
     function takeHeader( items ) {
         if ( ! window.fcDocHeader || ! window.fcDocImport || ! editorIsEmpty() ) return null;
+
+        // Bare links above the header (source posts noted by the writer) stay where they are.
+        var lead = 0;
+        while ( items[ lead ] && items[ lead ].block && ( items[ lead ].block.name === 'core/embed'
+                || ( items[ lead ].block.name === 'core/paragraph' && /^https?:\/\/\S+$/i.test( plain( items[ lead ].block.attributes.content ) ) ) ) ) lead++;
+
         var lines = [];
-        for ( var i = 0; i < items.length && items[ i ].block; i++ ) {
+        for ( var i = lead; i < items.length && items[ i ].block; i++ ) {
             var nm = items[ i ].block.name;
             if ( nm === 'core/paragraph' || nm === 'core/heading' ) lines.push( plain( items[ i ].block.attributes.content ) );
             else break;
         }
         var res = window.fcDocHeader.parse( lines );
         if ( ! res ) return null;
+        var before = items.splice( 0, lead );
         items.splice( 0, res.count );
 
         // No "Title" label: the line right above the first picture is the title.
@@ -525,6 +532,7 @@
 
         // A picture right after the title, before any text: that is the featured image.
         if ( items[ 0 ] && items[ 0 ].marker && items[ 0 ].marker.places === 1 ) res.featuredIndex = items[ 0 ].marker.index;
+        items.unshift.apply( items, before );
         return res;
     }
 

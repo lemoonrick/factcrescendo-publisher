@@ -22,6 +22,19 @@ const mal = h.parse( [ 'Synopsis:', 'Claim: a', 'Fact: b', 'Evidence: Disclaimer
 is( 'malayalam: empty Synopsis, Result = rating', [ mal.rating, mal.fields.fact, mal.fields.slug ], [ 'false', 'b', 's' ] );
 is( 'malayalam: stops at the first non-header line', mal.count, 8 );
 
+const asm = h.parse( [ 'Claim: c', 'Result: The video is from 2019 and not related to the claim.', 'Rating: False', 'body' ] );
+is( 'assamese: a sentence after Result is the fact', [ asm.fields.fact, asm.rating ], [ 'The video is from 2019 and not related to the claim.', 'false' ] );
+is( 'assamese: Result with the fact on the next line', h.parse( [ 'Claim: c', 'Result:', 'False claims spread about the old video.', 'body' ] ).fields.fact, 'False claims spread about the old video.' );
+const asm2 = h.parse( [ 'Author Name / Fact Check By: Fact Crescendo Team', 'Category: Political', 'Fact Check Rating: False', 'Tags: Rajiv Gandhi, ৰাজীৱ গান্ধী',
+    'Claim: দাবী: ৰাজীৱ গান্ধীৰ ওচৰত চুটকেচ লৈ থকা ব্যক্তিজন মল্লিকাৰ্জুন খৰ্গে।', 'Fact: ফলাফল: মিছা। ব্যক্তিজন খৰ্গে নহয়।', 'URL Slug: not kharge', 'ৰাজীৱ গান্ধীৰ ওচৰত চুটকেচ…' ] );
+is( 'assamese doc: label written twice is dropped', [ asm2.fields.claim, asm2.fields.fact, asm2.rating, asm2.count ],
+    [ 'ৰাজীৱ গান্ধীৰ ওচৰত চুটকেচ লৈ থকা ব্যক্তিজন মল্লিকাৰ্জুন খৰ্গে।', 'মিছা। ব্যক্তিজন খৰ্গে নহয়।', 'false', 7 ] );
+is( 'assamese rating word', h.parse( [ 'Claim: c', 'ফলাফল: মিছা' ] ).rating, 'false' );
+const mal2 = h.parse( [ 'Author: K. Mukundan', 'Category: Communal', 'Result: False', 'URL Slug: s', 'പ്രചരണം(Claim): c', 'വസ്തുത(Fact): f', 'SM Caption: cap', 'body' ] );
+is( 'malayalam doc: SM Caption leaves, Result is the rating', [ mal2.count, mal2.rating, mal2.fields.fact, mal2.fields.writer ], [ 7, 'false', 'f', 'K. Mukundan' ] );
+is( 'result inside a claim does not cut it', h.parse( [ 'Claim: the election result – BJP won', 'Rating: False' ] ).fields.claim, 'the election result – BJP won' );
+is( 'result: a short rating word is the rating', h.parse( [ 'Claim: c', 'Result: Partly False' ] ).rating, 'partly-false' );
+
 is( 'sinhala labels in capitals', h.parse( [ 'SYNOPSIS: s', 'WRITER : w', 'RATING : False', 'Tags / Meta Data : a, b', 'SLUG : x', 'Title : t', 'body' ] ).count, 6 );
 
 is( 'ratings', [ 'Partly False', 'Partially false', 'Missing Context', 'Satire', 'Altered', 'False', 'True' ].map( r => h.parse( [ 'Claim: c', 'Rating: ' + r ] ).rating ),
