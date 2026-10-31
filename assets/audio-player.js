@@ -1,12 +1,6 @@
 /**
- * "Listen to this article" player.
- *
- * Lives in its own file rather than inline in the article: WordPress
- * rewrites some characters in article HTML (&& became &#038;&#038;), which
- * silently broke the inline version so the player never started.
- *
- * Each player's markup comes from fc_build_audio_player(); the element ids
- * it needs are on the player itself as data attributes.
+ * The "Listen to this article" player (markup from fc_build_audio_player()).
+ * A separate file, not inline: WordPress rewrites "&&" in article HTML.
  */
 ( function () {
     function initPlayer( root ) {
@@ -21,15 +15,7 @@
             var langShort  = root.getAttribute('data-lang-short') || 'en';
             var bodyEl     = document.getElementById(root.getAttribute('data-body-id') || '');
 
-            // TTS reads ONLY the article body paragraphs. The fact card and
-            // the player are placed outside this container, and anything the
-            // editor wrote above the [fact_card] marker — a byline line —
-            // stays outside it too, so none of that is ever read aloud.
-            //
-            // The card/player checks below are belt and braces: they are not
-            // inside the container today, but if a future layout change ever
-            // puts them there, the narrator still won't read the claim, the
-            // fact, or the words "Listen to this article".
+            // Only the article's own paragraphs are read: never the card, the player or a byline.
             var paras = bodyEl ? Array.prototype.slice.call(bodyEl.querySelectorAll('p')).filter(function(p) {
                 if (p.textContent.replace(/\s+/g, '').length <= 8) return false;
                 if (p.closest && (p.closest('.fc-hero') || p.closest('.fc-cc-wrap') || p.closest('.fc-a-wrap'))) return false;
@@ -86,17 +72,8 @@
                 }
             }
 
-            // Pick a browser voice that matches the site language, so Hindi
-            // and Marathi articles are read by a Hindi/Marathi voice when the
-            // visitor's device has one installed.
-            //
-            // Critical: the browser only speaks a language if the device has
-            // a voice for it. English is everywhere; most Indian-language
-            // voices are not installed by default. When there is no matching
-            // voice AND no premium MP3, we hide the whole player rather than
-            // show a control that plays nothing (or mangles the text with an
-            // English voice). English is allowed to fall back to any English
-            // voice, which every device has.
+            // A voice in the site's language. Most phones have no Indian-language voice: with
+            // none and no recording, the player is hidden rather than play nothing.
             function findVoice() {
                 if (!('speechSynthesis' in window)) return null;
                 var voices = window.speechSynthesis.getVoices() || [];
@@ -158,30 +135,16 @@
             }
             function pausePremium() { if (mediaEl) mediaEl.pause(); setPlayingUI(false); }
 
-            // ── Browser voice, article body only ──
-            //
-            // Chrome cuts off any single utterance longer than ~200-250
-            // characters. Article paragraphs — especially in Indian
-            // languages — routinely exceed that, which is why long
-            // paragraphs were going silent mid-way. We split each paragraph
-            // into chunks under the limit (on sentence boundaries where
-            // possible) and queue them in order. Each chunk remembers which
-            // paragraph it came from so highlighting still works per-para.
+            // ── Browser voice ──
+            // Chrome stops speaking after ~200 characters, so paragraphs are read in sentence
+            // chunks; each chunk knows its paragraph for the highlight.
             var MAX_CHUNK = 180;
 
             function splitIntoChunks(text) {
                 text = text.trim();
                 if (!text) return [];
-                // Split on sentence enders shared across our languages,
-                // including the Devanagari danda (। / ॥) used by Hindi/Marathi.
-                //
-                // Written WITHOUT a regex lookbehind on purpose. Safari below
-                // 16.4 (iOS 15 and older, still common on our readers' phones)
-                // treats a lookbehind as a syntax error at parse time, which
-                // kills this entire script before the try/catch can catch it —
-                // taking the whole player down with it. Marking the break with
-                // a null character and splitting on that does the same job and
-                // parses everywhere.
+                // Sentence ends, including the danda (। ॥). No regex lookbehind: older iPhones
+                // (Safari < 16.4) can't parse it and the whole player would fail.
                 var sentences = text.replace(/([.!?।॥])\s+/g, '$1\u0000').split('\u0000');
                 var chunks = [];
                 sentences.forEach(function(sentence) {
@@ -281,11 +244,8 @@
                 }
             });
 
-            // Seek. Premium MP3 seeks to an exact time. Browser voice can't
-            // seek to a time, but it CAN restart narration from a chosen
-            // chunk, so a click on the bar jumps to the nearest chunk. (True
-            // drag-scrubbing isn't possible with the browser speech engine —
-            // this click-to-jump is the closest reliable behaviour.)
+            // A click on the bar: a recording jumps to that time, the browser voice to the
+            // nearest chunk.
             if (track) {
                 track.addEventListener('click', function(e) {
                     var rect = this.getBoundingClientRect();

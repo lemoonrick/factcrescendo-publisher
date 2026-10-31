@@ -1,20 +1,15 @@
 <?php
+/**
+ * What a reader sees in a fact-check article: the fact card, the author box, the
+ * WhatsApp banner and the Listen player, added around the article's own text.
+ */
+
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
- * [fact_card] — lets an editor say where the card goes.
- *
- * By default the card is added to the very start of the article body, which
- * puts it above a byline when one is typed as the first line. Typing
- * [fact_card] on the line below the byline moves the card there instead.
- *
- * Why a placeholder comment rather than the card itself: shortcodes are
- * expanded at priority 11 on the_content, but the card needs data this
- * filter gathers at priority 20. So the shortcode leaves a marker, and
- * fc_inject_blocks() splits the content on it.
- *
- * Registering it also means a stray [fact_card] on a normal post prints
- * nothing at all, rather than showing as raw text.
+ * [fact_card] puts the card there instead of at the top of the article. Shortcodes run
+ * before the card is built (priority 11 vs 20), so it leaves a marker that
+ * fc_inject_blocks() splits on. On other posts it prints nothing.
  */
 const FC_CARD_MARKER = '<!--fc-card-here-->';
 
@@ -23,7 +18,6 @@ function fc_card_marker_shortcode() {
     return FC_CARD_MARKER;
 }
 
-// 2. Inject the Blocks
 add_filter( 'the_content', 'fc_inject_blocks', 20 );
 function fc_inject_blocks( $content ) {
 
@@ -53,12 +47,8 @@ function fc_inject_blocks( $content ) {
 
     list( $before, $after ) = fc_split_on_card_marker( $content );
 
-    // Audio player is optional per site. When disabled, no player renders
-    // and the article content is returned without the highlight wrapper.
-    //
-    // The free voice is English only: browsers rarely ship voices for Indian
-    // languages, so elsewhere it would mostly not work. A post that already
-    // has a premium recording keeps playing it, whatever the language.
+    // Audio player, when the site has it on. The free browser voice is English only (browsers
+    // rarely have Indian-language voices); a post with a paid recording keeps it in any language.
     $audio_enabled = get_option( 'fc_enable_audio', '1' ) === '1'
         && ( fc_site_lang() === 'en' || get_post_meta( $post_id, 'fc_audio_url', true ) );
 
@@ -75,16 +65,7 @@ function fc_inject_blocks( $content ) {
     return $before . $fact_card . $after . $author_box . $wa_banner;
 }
 
-/**
- * Splits article content at the [fact_card] marker.
- *
- * Returns [ text before the marker, everything after it ]. With no marker,
- * everything lands in the second half and the card sits at the top exactly
- * as it always has.
- *
- * Only the first marker counts; any others are stripped so they can't leave
- * stray comments in the page or split the article twice.
- */
+/** [ before the first [fact_card] marker, after it ]. No marker: everything is "after". Extra markers are removed. */
 function fc_split_on_card_marker( $content ) {
 
     if ( strpos( $content, FC_CARD_MARKER ) === false ) {
@@ -119,39 +100,16 @@ function fc_rating_tone( $rating ) {
     return 'warn';
 }
 
-// ── FACT CARD ─────────────────────────────────────────────────────────────
+// ── The simple card ──────────────────────────────────────────────────────────
 /**
- * Two pieces: the featured image at full content width, then a findings bar
- * directly beneath it carrying the claim, the verdict and the fact.
- *
- * The bar used to be an overlay sitting on the picture, which clipped the
- * FACT CHECKED stamp burned into the artwork. Nothing covers the image now
- * except the site logo in the corner.
- *
- * Deliberately plain: no screenshot export, no inlined base64 images, no
- * social icons or phone number baked into the graphic. The bar is sized by
- * its text, so it stays compact as long as the claim and fact are written
- * tightly.
- *
- * Where this appears: at the start of the article body by default, or
- * wherever the editor typed [fact_card] — see fc_inject_blocks().
+ * The "simple" card: the photo at full width (only the logo over it, so a stamp in the
+ * artwork stays visible), then a bar with the claim, the verdict and the fact.
  */
 function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $logo_url ) {
 
-    // Build the image from the attachment directly rather than with
-    // get_the_post_thumbnail().
-    //
-    // get_the_post_thumbnail() passes its output through the
-    // 'post_thumbnail_html' filter on the way out, and blanking that filter
-    // is exactly how "hide featured image" plugins work. Using it here meant
-    // that hiding the theme's duplicate image also blanked ours, and the card
-    // collapsed into its no-image fallback.
-    //
-    // wp_get_attachment_image() is the inner call that builds the same tag,
-    // srcset included, without passing through that filter — so the theme's
-    // copy can be hidden while the card keeps its picture.
-    //
-    // fc_card_photo_id() gives the plain photo, never a stamped featured image.
+    // wp_get_attachment_image(), not get_the_post_thumbnail(): hiding the theme's featured image
+    // blanks the 'post_thumbnail_html' filter, which would blank the card's photo too.
+    // fc_card_photo_id() gives the plain photo, never the stamped one.
     $thumb_id = fc_card_photo_id( $post_id );
     $img_html = $thumb_id ? wp_get_attachment_image( $thumb_id, 'full', false, [
         'class'         => 'fc-hero-img',
@@ -292,22 +250,11 @@ function fc_build_fact_card( $post_id, $rating, $rating_label, $claim, $fact, $l
     return ob_get_clean();
 }
 
-// ── AUDIO PLAYER ──────────────────────────────────────────────────────────────
+// ── Audio player ─────────────────────────────────────────────────────────────
 /**
- * Light-themed narration player. Two modes:
- *
- * - Premium (fc_audio_url set): a real <audio> element with seekable
- *   progress, real elapsed/total time, and playback speed.
- * - Free fallback (no MP3): the browser's built-in voice reads the
- *   article paragraph by paragraph, highlighting and auto-scrolling to
- *   whichever one is currently being read. Progress shows as
- *   "paragraph X of Y" since real timing isn't available from the
- *   browser's speech engine.
- *
- * Every colour is either a hard-coded hex value or set via an explicit
- * CSS rule scoped to fc-a- prefixed classes, rather than relying on
- * `currentColor` inheritance — this is deliberate so the controls stay
- * visible regardless of what the active theme's global styles do.
+ * The "Listen" player. With a recording (fc_audio_url): a normal audio player. Without:
+ * the browser's own voice reads paragraph by paragraph, highlighting each one.
+ * Colours are fixed so themes can't hide the controls.
  */
 function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
     // Printed in the footer, after the player's markup exists.
@@ -410,7 +357,7 @@ function fc_build_audio_player( $post_id, $title, $claim, $fact ) {
 }
 
 
-// ── AUTHOR BOX HTML ─────────────────────────────────────────────────────────────
+// ── Author box ───────────────────────────────────────────────────────────────
 function fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_label ) {
     ob_start();
     ?>
@@ -456,7 +403,7 @@ function fc_build_author_box( $title, $author, $author_url, $stamp_url, $rating_
     return ob_get_clean();
 }
 
-// ── WHATSAPP BANNER ────────────────────────────────────────────────────────
+// ── WhatsApp banner ──────────────────────────────────────────────────────────
 /**
  * The banner at the end of the article. Settings choose which one:
  *   card   – the new banner, with this site's number (default)
@@ -614,20 +561,8 @@ function fc_build_whatsapp_card( $site ) {
     return ob_get_clean();
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
-/**
- * Rating stamps now ship inside the plugin, in assets/stamps/.
- *
- * They used to be loaded live from factcrescendo.com, which meant every
- * edition depended on that one site staying up and on that uploads folder
- * never being reorganised. If either had changed, stamps would have broken
- * across all editions at the same moment. Serving them from each site's own
- * copy of the plugin removes that shared point of failure, and they arrive
- * from the same domain as the page.
- *
- * The fc_stamp_map filter still works exactly as before, so a site that
- * wants its own artwork can keep overriding these.
- */
+// ── Helpers ──────────────────────────────────────────────────────────────────
+/** Rating stamps, shipped in assets/stamps/. The fc_stamp_map filter can swap the artwork. */
 function fc_get_stamp_url( $rating ) {
     $base = FC_PUBLISHER_URL . 'assets/stamps/';
 
@@ -651,16 +586,7 @@ function fc_get_rating_label( $rating ) {
 
     if ( isset( $labels[ $key ] ) ) return $labels[ $key ];
 
-    /*
-     * An unrecognised rating. The editor's dropdown only offers the eight
-     * above, but fc_rating is registered as post meta, and anything with
-     * edit_posts can write arbitrary text to it through the REST meta
-     * endpoint — the dropdown is not a guarantee about what is stored.
-     *
-     * This label ends up in the ClaimReview markup, so it is stripped of
-     * tags and capped here rather than passed through untouched. Every HTML
-     * use of it is escaped at the point of output as well.
-     */
+    // A rating outside the list (old data): plain text, capped, as it goes into Google's data too.
     $label = wp_strip_all_tags( (string) $rating );
     $label = trim( preg_replace( '/\s+/', ' ', $label ) );
 
@@ -671,7 +597,7 @@ function fc_get_rating_label( $rating ) {
     return ucfirst( $label );
 }
 
-// ── GLOBAL ARTICLE SPACING FIX ────────────────────────────────────────────────
+// ── Spacing in articles ──────────────────────────────────────────────────────
 add_action( 'wp_head', 'fc_global_content_spacing' );
 
 function fc_global_content_spacing() {

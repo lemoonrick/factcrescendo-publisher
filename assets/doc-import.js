@@ -1,15 +1,9 @@
 /**
- * Doc import: puts what doc-header.js read from a pasted Doc into the post, and shows
- * the writer a report of what was filled in and what still needs them.
- *
- *   fcDocImport.fill( header )               fills the Fact Check box, title, slug, tags,
- *                                            categories and author, then shows the report
- *   fcDocImport.finishFeatured( header, r )  once the pasted pictures are uploaded, makes
- *                                            the picture after the title the featured image
- *
- * Never overwrites something already filled in and never creates categories. The report
- * is a plain card (no framework): large, high-contrast text and a status word on every line.
- * Plain JavaScript, no build step.
+ * Puts what doc-header.js read into the post and shows the writer a report.
+ *   fcDocImport.fill( header )               Fact Check box, title, slug, excerpt, tags,
+ *                                            categories, author; then the report
+ *   fcDocImport.finishFeatured( header, r )  after the uploads: the featured image
+ * Never overwrites what is already filled in and never creates categories.
  */
 ( function ( wp ) {
     'use strict';
@@ -230,11 +224,7 @@
         renderReport();
     }
 
-    /**
-     * Fills the Fact Check box and the post's title, slug, tags, category and author from the
-     * header, then shows what it did and what it could not find. Never overwrites something
-     * already filled in; never creates categories.
-     */
+    /** Fills the post from the header and shows what was done and what is missing. */
     function applyHeader( res ) {
         var ed = wp.data.select( 'core/editor' ), dp = wp.data.dispatch( 'core/editor' );
         var f = res.fields, meta = ed.getEditedPostAttribute( 'meta' ) || {};

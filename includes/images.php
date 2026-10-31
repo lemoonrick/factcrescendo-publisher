@@ -1,20 +1,9 @@
 <?php
 /**
- * Photos are saved as WebP.
- *
- * Every JPEG or PNG added to the media library — pasted from a Google Doc,
- * dragged in, or uploaded in the Media screen — is turned into a WebP file
- * before WordPress stores it, so pages load faster and the whole site serves
- * the same modern format. Free: it uses the image tools already on the
- * server (PHP's GD or Imagick), no outside service.
- *
- * Left alone: GIFs (they may be animated), SVGs, files that are already
- * WebP, animated PNGs, and anything too large to convert safely. If the
- * server can't make WebP, or anything goes wrong, the original is kept and
- * the upload carries on as if this didn't exist.
- *
- * Only new uploads are touched. Pictures already in the media library, and
- * every article that uses them, stay exactly as they are.
+ * New JPEG and PNG uploads are saved as WebP before WordPress stores them, using the
+ * server's own image tools. GIF, SVG, WebP and animated PNG are left alone, and so is
+ * anything too big for the memory left. Any failure keeps the original. Pictures
+ * already in the Media Library are never touched.
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -41,22 +30,13 @@ function fc_webp_can() {
 
 add_filter( 'wp_handle_upload', 'fc_webp_on_upload', 10, 1 );
 
-/*
- * WordPress picks the quality from the picture's ORIGINAL type (JPEG), so
- * without this the quality chosen in Settings would be ignored. This makes
- * every WebP WordPress writes — the converted photo and its smaller sizes —
- * use it.
- */
+// WordPress picks the quality from the original type (JPEG): use the Settings quality for every WebP instead.
 add_filter( 'wp_editor_set_quality', function ( $quality, $mime ) {
     if ( ! fc_webp_enabled() ) return $quality;
     return ( $mime === 'image/webp' || ! empty( $GLOBALS['fc_webp_converting'] ) ) ? fc_webp_quality() : $quality;
 }, 10, 2 );
 
-/**
- * Runs right after a file is uploaded and before WordPress registers it, so
- * everything that follows (sizes, the media library, the article) sees the
- * WebP file, never the original.
- */
+/** Swaps the uploaded file for its WebP copy before WordPress registers it. */
 function fc_webp_on_upload( $upload ) {
     if ( ! is_array( $upload ) || ! empty( $upload['error'] ) ) return $upload;
     if ( ! in_array( $upload['type'] ?? '', [ 'image/jpeg', 'image/png' ], true ) ) return $upload;

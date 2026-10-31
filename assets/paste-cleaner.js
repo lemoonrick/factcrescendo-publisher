@@ -1,40 +1,13 @@
 /**
- * Clean paste: text and pictures copied from Word, Google Docs or LibreOffice
- * arrive in the block editor tidy, instead of with their hidden formatting.
- *
- * What goes wrong without it, and what this does about it:
- *   - A picture and the words next to it end up in one paragraph and run
- *     together                         → every picture becomes its own block.
- *   - The same picture appears twice   → a picture that repeats right after
- *                                        itself is kept once.
- *   - Pictures are missing             → each picture is copied into the Media
- *                                        Library (so it can't expire or point at
- *                                        the writer's computer). Pictures that
- *                                        can't be read are reported, never
- *                                        silently lost.
- *   - Pictures put side by side in a table
- *                                      → the same rows as Columns blocks
- *                                        (empty cells stay empty, 4+ in a row
- *                                        go 2 to a row), nothing cropped. A
- *                                        table with words in it is left alone.
- *                                        Pictures anywhere else stay one under
- *                                        the other; a "side by side" note
- *                                        above them is handled on save.
- *   - The Doc's header lines (Claim, Rating, Title ...) were typed into the article
- *                                      → read by doc-header.js, put in the post and
- *                                        reported by doc-import.js, and taken out of the text.
- *   - Horizontal lines (drawn, or typed as ____ / ----)
- *                                      → removed; our articles never have them.
- *   - Lines glued together, blank lines, no-break spaces and other leftovers
- *                                      → one line becomes one paragraph; empty
- *                                        paragraphs and stray spaces are removed.
- *
- * Only pastes that look like they came from Word, Google Docs or LibreOffice
- * are handled. Anything else, including text copied
- * inside the editor, is left to WordPress. Plain JavaScript, no build step.
- *
- * Careful: zero-width joiners (U+200C, U+200D) are never removed. Hindi,
- * Marathi, Tamil, Sinhala and the other scripts need them to display correctly.
+ * Cleans what is pasted from Word, Google Docs or LibreOffice into the block editor:
+ *   - each picture becomes its own block, copied into the Media Library (a picture that
+ *     can't be read is reported, never silently lost); a repeated picture is kept once;
+ *   - a table of pictures becomes Columns (a table with words stays a table);
+ *   - the Doc's header lines (Claim, Rating, Title …) go into the post (doc-header.js
+ *     reads them, doc-import.js fills and reports) and leave the article;
+ *   - production notes, horizontal lines, empty lines and stray spaces are removed.
+ * Other pastes, including text copied inside the editor, are left to WordPress.
+ * Zero-width joiners (U+200C, U+200D) are never removed: Indian scripts need them.
  */
 ( function ( wp ) {
     'use strict';
@@ -367,12 +340,8 @@
     }
 
     /**
-     * Makes a picture lighter before it is sent: at most 2560 pixels on its longest
-     * side (the size WordPress itself scales big photos down to) and WebP at the
-     * quality chosen in Settings. Uploads are much faster and the server has less
-     * to do. GIFs, animated PNGs and anything the browser can't read go as they are.
-     * If the result isn't smaller, the original is sent. Never fails: any problem
-     * means the original is sent and the server converts it.
+     * Shrinks a picture before upload: at most 2560 px (WordPress's own limit), WebP at the
+     * Settings quality. GIF, animated PNG, or a result that isn't smaller: the original goes.
      */
     function lighten( blob ) {
         if ( ! cfg.webp || typeof createImageBitmap !== 'function' || ! /^image\/(jpeg|png|webp)$/.test( blob.type ) ) return Promise.resolve( blob );

@@ -1008,6 +1008,10 @@ check( 'updates only from this GitHub repository', fc_updater_trusted_url( 'http
     && ! fc_updater_trusted_url( 'https://evil.example/lemoonrick/factcrescendo-publisher/x.zip' )
     && ! fc_updater_trusted_url( 'https://github.com/someone-else/factcrescendo-publisher/x.zip' )
     && ! fc_updater_trusted_url( 'http://github.com/lemoonrick/factcrescendo-publisher/x.zip' ) );
+add_filter( 'fc_update_repo', function () { return 'someone-else/factcrescendo-publisher'; } );
+check( 'no filter can point updates at another repository', fc_updater_repo() === 'lemoonrick/factcrescendo-publisher'
+    && ! fc_updater_trusted_url( 'https://github.com/someone-else/factcrescendo-publisher/x.zip' ) );
+remove_all_filters( 'fc_update_repo' );
 check( 'updates never install on their own', apply_filters( 'auto_update_plugin', true, (object) [ 'plugin' => fc_updater_basename() ] ) === false );
 
 $editor = wp_insert_user( [ 'user_login' => 'ed' . wp_rand(), 'user_pass' => wp_generate_password(), 'role' => 'author' ] );

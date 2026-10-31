@@ -463,25 +463,17 @@ function fc_enqueue_editor_panel() {
         ] ) . ';', 'before' );
     }
 
-    $ratings = [];
-    foreach ( fc_rating_choices() as $value => $label ) {
-        $ratings[] = [ 'value' => $value, 'label' => $label ];
-    }
     $options = function ( $choices ) {
         $out = [];
         foreach ( $choices as $value => $label ) $out[] = [ 'value' => (string) $value, 'label' => $label ];
         return $out;
     };
-
-    $modes     = fc_card_mode_options();
-    $site_card = fc_card_design();
-
     $post = get_post();
 
     wp_add_inline_script( 'fc-editor-panel', 'window.fcEditor = ' . wp_json_encode( [
-        'ratings'      => $ratings,
-        'cardModes'    => $options( $modes ),
-        'siteCard'     => $site_card,
+        'ratings'      => $options( fc_rating_choices() ),
+        'cardModes'    => $options( fc_card_mode_options() ),
+        'siteCard'     => fc_card_design(),
         'badges'       => $options( fc_featured_badge_choices() ),
         'featuredHelp' => fc_featured_help_text(),
         'olderPost'    => $post ? fc_featured_is_older_post( $post ) : false,

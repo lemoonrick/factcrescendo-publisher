@@ -58,11 +58,8 @@ function fc_register_settings() {
 }
 
 /**
- * Banner HTML is sanitized against an explicit allowlist rather than
- * granted a raw "unfiltered_html" bypass. This still allows the styled
- * banner markup (style blocks, inline SVG icons, custom classes) while
- * removing script tags, event handler attributes, and anything outside
- * this list — regardless of who is saving it.
+ * The tags a custom banner may use (styles, SVG icons, classes). Scripts, event
+ * attributes and anything else are removed, whoever saves it.
  */
 function fc_sanitize_banner_html( $input, $keep_styles = false ) {
     $common = [ 'class' => true, 'style' => true, 'id' => true, 'aria-label' => true, 'aria-hidden' => true, 'role' => true ];

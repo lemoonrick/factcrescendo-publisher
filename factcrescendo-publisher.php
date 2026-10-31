@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       FactCrescendo Publisher
  * Plugin URI:        https://github.com/lemoonrick/factcrescendo-publisher
- * Description:       Publishing tools for fact-checking sites: fact-check fields, a branded fact card, stamped featured images, a WhatsApp banner, Google fact-check data, and automatic embeds for links pasted from Google Docs, and WebP conversion of new photos.
+ * Description:       Publishing tools for fact-checking sites: fact-check fields, a branded fact card, stamped featured images, a WhatsApp banner, Google fact-check data, Google Doc import with automatic embeds, and WebP conversion of new photos.
  * Version:           4.12.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
@@ -27,8 +27,7 @@ function fc_asset_version( $relative ) {
     return FC_PUBLISHER_VERSION . ( $time ? '.' . $time : '' );
 }
 
-// Load all modules. fields.php and sites.php come first because the
-// others read from them.
+// fields.php and sites.php first: the others use them.
 require_once FC_PUBLISHER_DIR . 'includes/fields.php';
 require_once FC_PUBLISHER_DIR . 'includes/sites.php';
 require_once FC_PUBLISHER_DIR . 'includes/rest-api.php';
@@ -41,15 +40,10 @@ require_once FC_PUBLISHER_DIR . 'includes/settings-page.php';
 require_once FC_PUBLISHER_DIR . 'includes/seo-schema.php';
 require_once FC_PUBLISHER_DIR . 'includes/updater.php';
 
-// Premium ElevenLabs narration (includes/audio-generator.php) is switched off
-// for now: it is not loaded, so nothing calls the API. Posts that already
-// have a recording keep playing it. To bring it back, load the file here,
-// restore its settings and give it a field in fields.php.
+// Paid ElevenLabs narration (includes/audio-generator.php) is switched off and not loaded.
+// Posts that already have a recording keep playing it.
 
-/**
- * Uninstall cleanup lives in a separate check so activating/deactivating
- * never touches stored data. Only fires on actual plugin deletion.
- */
+// Settings are removed only when the plugin is deleted, never on deactivation.
 register_uninstall_hook( __FILE__, 'fc_publisher_uninstall' );
 function fc_publisher_uninstall() {
     delete_option( 'fc_whatsapp_banner_html' );
@@ -69,6 +63,7 @@ function fc_publisher_uninstall() {
     delete_option( 'fc_webp_uploads' );
     delete_option( 'fc_webp_quality' );
     delete_option( 'fc_clean_paste' );
+    delete_option( 'fc_hide_featured' );
     delete_option( 'fc_embeds_since' );
     delete_option( 'fc_embed_notes' );
     delete_transient( 'fc_latest_release' );

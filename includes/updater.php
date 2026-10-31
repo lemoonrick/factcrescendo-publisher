@@ -1,58 +1,32 @@
 <?php
 /**
- * Automatic updates from GitHub.
- *
- * Push a new version to GitHub and every site shows the usual
- * "Update available" prompt under Plugins. One click and it updates.
- * No ZIP uploads, no FTP, nothing to do on each site.
- *
- * A few things worth knowing:
- *
- *  - We check both releases and tags, and use whichever is newer. A tag on
- *    its own is enough; publishing a release is optional and only adds the
- *    notes shown in the "View details" popup.
- *  - Answers are cached for 12 hours so we stay well inside GitHub's limit
- *    of 60 requests an hour. A failed check is only cached for 1 hour, so a
- *    brief outage doesn't block updates for the rest of the day.
- *  - The repository is public, so no token or password is stored anywhere.
- *
- * Every function here is prefixed fc_updater_ and used only in this file.
+ * Updates from GitHub. A new version tag on GitHub makes every site show the usual
+ * "Update available" prompt; an admin clicks Update (never automatic). Only
+ * downloads from our own repository are accepted. The repository is public, so no
+ * token is stored. Publishing a GitHub release is optional: it only adds notes to
+ * "View details".
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-/** How long a good answer is kept before we ask GitHub again. */
+/** How long an answer from GitHub is kept. */
 define( 'FC_UPDATER_CACHE_TTL', 3 * HOUR_IN_SECONDS );
 
-/** How long a failed answer is kept. Shorter, so outages recover quickly. */
+/** How long a failed check is kept: shorter, so an outage clears quickly. */
 define( 'FC_UPDATER_FAIL_TTL', HOUR_IN_SECONDS );
 
-/**
- * Where the cached answer is stored.
- *
- * The value is left as-is from earlier versions so that sites upgrading
- * from those still find and clear their existing cache.
- */
+/** Where the answer is cached (name kept from earlier versions). */
 define( 'FC_UPDATER_CACHE_KEY', 'fc_latest_release' );
 
-/**
- * Seconds to wait on GitHub before giving up.
- *
- * This runs while an admin page is loading, and there are two requests, so
- * keep it short — a slow GitHub should not mean a slow dashboard.
- */
+/** Seconds to wait for GitHub. Short: this runs while an admin page loads. */
 define( 'FC_UPDATER_TIMEOUT', 10 );
 
 
 // ── Which plugin, and which repository ───────────────────────────────────────
 
-/**
- * The GitHub repository to check.
- *
- * Filterable so a fork or mirror can point elsewhere without editing this file.
- */
+/** The only repository updates may come from. Deliberately not changeable by a filter. */
 function fc_updater_repo() {
-    return apply_filters( 'fc_update_repo', 'lemoonrick/factcrescendo-publisher' );
+    return 'lemoonrick/factcrescendo-publisher';
 }
 
 /** e.g. "factcrescendo-publisher/factcrescendo-publisher.php" */
@@ -72,11 +46,8 @@ function fc_updater_slug() {
  * The newest version available, as an array of
  * [ version, tag, zip, notes, published, url ], or null if we couldn't find one.
  *
- * Read from the list of tags: one request, the highest version wins. The
- * answer is kept for 3 hours, so a site never offers a version that is long
- * out of date. WordPress's own "Check again" button (Dashboard → Updates)
- * asks GitHub straight away. Release notes are only fetched when someone
- * opens "View details".
+ * One request for the list of tags; the highest version wins. Kept for 3 hours;
+ * "Check again" on Dashboard → Updates asks straight away.
  *
  * @param bool $force Skip the cache and ask GitHub now.
  */
@@ -261,15 +232,8 @@ function fc_updater_check( $transient ) {
 
     $basename = fc_updater_basename();
 
-    /*
-     * Which version is installed?
-     *
-     * Read it from $transient->checked, which WordPress has just taken from
-     * the plugin files on disk — not from FC_PUBLISHER_VERSION. During an
-     * update the old plugin file is still loaded in memory, so that constant
-     * would still hold the version being replaced, and we would announce an
-     * update to the version that was just installed.
-     */
+    // The installed version as read from disk. During an update FC_PUBLISHER_VERSION still
+    // holds the old number, which would announce the version just installed.
     $installed = ! empty( $transient->checked[ $basename ] )
         ? $transient->checked[ $basename ]
         : FC_PUBLISHER_VERSION;
@@ -285,15 +249,7 @@ function fc_updater_check( $transient ) {
         'banners'     => [],
     ];
 
-    /*
-     * Whichever list we add to, remove from the other one.
-     *
-     * The "new version available" notice is drawn from the first list, and
-     * plenty of things re-save this data without rebuilding it — activating
-     * a plugin, clearing a cache, another plugin touching it. Without the
-     * removal, an old entry would survive and the notice would stay on
-     * screen even after updating.
-     */
+    // In one list only: a leftover entry would keep "update available" showing after updating.
     if ( version_compare( $installed, $latest['version'], '<' ) ) {
         $transient->response[ $basename ] = $info;
         unset( $transient->no_update[ $basename ] );
@@ -336,15 +292,13 @@ function fc_updater_plugin_details( $result, $action, $args ) {
         'download_link' => $latest['zip'],
         'last_updated'  => $latest['published'],
         'sections'      => [
-            'description' => 'Automates fact-check publishing: structured fields, auto-inserted fact card, author box and WhatsApp banner, ClaimReview schema, audio narration, and a read-only REST API.',
+            'description' => 'Fact-check publishing for FactCrescendo sites: fact-check fields, fact card, author box, WhatsApp banner, Google fact-check data, Google Doc import, embeds and WebP photos.',
             'changelog'   => fc_updater_format_notes( $latest['notes'] ),
         ],
     ];
 }
 
-/**
- * Release notes come from GitHub, so they are cleaned before display.
- */
+/** Release notes come from GitHub: cleaned before display. */
 function fc_updater_format_notes( $notes ) {
 
     $notes = trim( (string) $notes );
@@ -360,12 +314,8 @@ function fc_updater_format_notes( $notes ) {
 add_filter( 'upgrader_source_selection', 'fc_updater_fix_folder_name', 10, 4 );
 
 /**
- * Renames the unpacked folder before WordPress installs it.
- *
- * GitHub's automatic ZIP unpacks to something like
- * "lemoonrick-factcrescendo-publisher-a1b2c3d". WordPress uses the folder
- * name as the plugin's identity, so without this the update would arrive as
- * a separate, switched-off copy while the real one stayed on the old version.
+ * GitHub's zip unpacks to "lemoonrick-factcrescendo-publisher-a1b2c3d". Renamed to the
+ * plugin's folder, or the update would install as a second, inactive copy.
  */
 function fc_updater_fix_folder_name( $source, $remote_source, $upgrader, $hook_extra = null ) {
 
@@ -397,10 +347,7 @@ function fc_updater_fix_folder_name( $source, $remote_source, $upgrader, $hook_e
 
 add_action( 'upgrader_process_complete', 'fc_updater_clear_cache', 10, 2 );
 
-/**
- * Clears both cached answers once this plugin has been updated, so the next
- * check reads the new state instead of the old one.
- */
+/** Clears the cached answers once this plugin has been updated. */
 function fc_updater_clear_cache( $upgrader, $hook_extra ) {
 
     if ( empty( $hook_extra['type'] ) || $hook_extra['type'] !== 'plugin' ) return;

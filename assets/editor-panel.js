@@ -283,19 +283,10 @@
     }
 
     /**
-     * After a save, show what the plugin made of the article.
-     *
-     * When the post is saved, links and pasted code become Embed, Custom HTML
-     * and Image blocks, and author notes like "Embed" are deleted (embeds.php).
-     * The editor would otherwise keep showing the article as it was pasted,
-     * so the saved version is loaded back in, and saved once more so the
-     * editor doesn't think there are unsaved changes.
-     *
-     * Careful with the listener below: it runs on EVERY change in the editor.
-     * It only notes that a save finished, then leaves; the real work happens
-     * afterwards, outside the listener, and reads the saved article straight
-     * from the server. (Reading it through the editor's own store from inside
-     * the listener made the store notify the listener again, without end.)
+     * After a save, load the article back from the server so the editor shows the embeds
+     * and blocks embeds.php made.
+     * Careful: the listener runs on every change. It only notes that a save finished;
+     * reading the editor's store inside it froze the editor (endless loop).
      */
     ( function () {
         if ( ! wp.blocks || ! wp.blocks.parse || ! wp.apiFetch ) return;

@@ -40,52 +40,52 @@ function fc_site_profiles() {
 
     $profiles = [
         'factcrescendo.com' => $india + [
-            'label'        => 'Hindi',
+            'label'         => 'Hindi',
             'join_language' => 'Hindi',
-            'lang'         => 'hi',
-            'banner_image' => 'https://www.factcrescendo.com/wp-content/uploads/2020/03/T-Hindi-23.png',
+            'lang'          => 'hi',
+            'banner_image'  => 'https://www.factcrescendo.com/wp-content/uploads/2020/03/T-Hindi-23.png',
         ],
         'english.factcrescendo.com' => $india + [
-            'label'        => 'English',
+            'label'         => 'English',
             'join_language' => 'English',
-            'lang'         => 'en',
-            'banner_image' => 'https://english.factcrescendo.com/wp-content/uploads/2021/03/English-2-scaled.jpg',
+            'lang'          => 'en',
+            'banner_image'  => 'https://english.factcrescendo.com/wp-content/uploads/2021/03/English-2-scaled.jpg',
         ],
         'malayalam.factcrescendo.com' => $india + [
-            'label'        => 'Malayalam',
+            'label'         => 'Malayalam',
             'join_language' => 'Malayalam',
-            'lang'         => 'ml',
-            'banner_image' => 'https://malayalam.factcrescendo.com/wp-content/uploads/2021/03/Malayalam-2.png',
+            'lang'          => 'ml',
+            'banner_image'  => 'https://malayalam.factcrescendo.com/wp-content/uploads/2021/03/Malayalam-2.png',
         ],
         'tamil.factcrescendo.com' => $india + [
-            'label'        => 'Tamil',
+            'label'         => 'Tamil',
             'join_language' => 'Tamil',
-            'lang'         => 'ta',
-            'banner_image' => 'https://tamil.factcrescendo.com/wp-content/uploads/2021/03/Tamil-new.png',
+            'lang'          => 'ta',
+            'banner_image'  => 'https://tamil.factcrescendo.com/wp-content/uploads/2021/03/Tamil-new.png',
         ],
         'gujarati.factcrescendo.com' => $india + [
-            'label'        => 'Gujarati',
+            'label'         => 'Gujarati',
             'join_language' => 'Gujarati',
-            'lang'         => 'gu',
-            'banner_image' => 'https://gujarati.factcrescendo.com/wp-content/uploads/2021/03/Gujarati-2.png',
+            'lang'          => 'gu',
+            'banner_image'  => 'https://gujarati.factcrescendo.com/wp-content/uploads/2021/03/Gujarati-2.png',
         ],
         'odia.factcrescendo.com' => $india + [
-            'label'        => 'Odia',
+            'label'         => 'Odia',
             'join_language' => 'Odia',
-            'lang'         => 'or',
-            'banner_image' => 'https://odia.factcrescendo.com/wp-content/uploads/2021/03/Odia-2.png',
+            'lang'          => 'or',
+            'banner_image'  => 'https://odia.factcrescendo.com/wp-content/uploads/2021/03/Odia-2.png',
         ],
         'assamese.factcrescendo.com' => $india + [
-            'label'        => 'Assamese',
+            'label'         => 'Assamese',
             'join_language' => 'Assamese',
-            'lang'         => 'as',
-            'banner_image' => 'https://assamese.factcrescendo.com/wp-content/uploads/2021/03/Assamese.png',
+            'lang'          => 'as',
+            'banner_image'  => 'https://assamese.factcrescendo.com/wp-content/uploads/2021/03/Assamese.png',
         ],
         'marathi.factcrescendo.com' => $india + [
-            'label'        => 'Marathi',
+            'label'         => 'Marathi',
             'join_language' => 'Marathi',
-            'lang'         => 'mr',
-            'banner_image' => 'https://marathi.factcrescendo.com/wp-content/uploads/2021/03/Marathi-2-scaled.jpg',
+            'lang'          => 'mr',
+            'banner_image'  => 'https://marathi.factcrescendo.com/wp-content/uploads/2021/03/Marathi-2-scaled.jpg',
         ],
 
         // Sri Lanka. The banner was pasted with an http:// address; browsers
@@ -93,9 +93,9 @@ function fc_site_profiles() {
         // https directly. Language is left to the site's own setting because
         // one entry covers the Sinhala, Tamil and English editions.
         'srilanka.factcrescendo.com' => $sl + [
-            'label'        => 'Sri Lanka',
-            'lang'         => '',
-            'banner_image' => 'https://srilanka.factcrescendo.com/wp-content/uploads/2023/05/Whats-app-sri-lanka-new.png',
+            'label'         => 'Sri Lanka',
+            'lang'          => '',
+            'banner_image'  => 'https://srilanka.factcrescendo.com/wp-content/uploads/2023/05/Whats-app-sri-lanka-new.png',
         ],
     ];
 

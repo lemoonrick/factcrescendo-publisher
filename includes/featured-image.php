@@ -75,8 +75,9 @@ function fc_featured_is_older_post( $post ) {
     return strtotime( $post->post_date_gmt . ' UTC' ) < $since;
 }
 
-// Remember when stamping arrived, for the rule above.
-add_action( 'init', function () {
+// Remember when stamping arrived, for the rule above. Admin only: not autoloaded, so
+// checking it on every visitor's page would cost a database query.
+add_action( 'admin_init', function () {
     if ( ! get_option( 'fc_featured_since' ) ) update_option( 'fc_featured_since', time(), false );
 } );
 
@@ -336,13 +337,8 @@ function fc_featured_load( $file ) {
 // ── Hiding the featured image on article pages ───────────────────────────────
 
 /**
- * The theme shows the featured image at the top of every article, and the fact
- * card already shows the photo. This blanks the theme's copy on the article
- * page of a post (the same job a "hide featured image" plugin does, for every
- * post at once). Nothing else changes: the image stays in the Media Library
- * and on the post, social previews still use it, archive and related-post
- * lists keep theirs, and the fact card builds its own picture from the
- * attachment (see fc_build_fact_card()). Never runs in the admin or the editor.
+ * The fact card already shows the photo, so the theme's copy at the top of the article
+ * page is blanked. Lists, related posts, social previews and the fact card keep theirs.
  */
 add_filter( 'post_thumbnail_html', 'fc_hide_featured_on_article', 10, 2 );
 

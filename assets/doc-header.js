@@ -1,24 +1,14 @@
 /**
- * Reads the "header" lines at the top of a pasted fact-check Doc:
+ * Reads the header lines at the top of a pasted fact-check Doc ("Claim: …", "Rating – False",
+ * "Slug- …", "Title:" with the value on the next line, several labels on one line …).
+ * The words come from doc-header-labels.js. Rules only, no AI.
  *
- *     Claim: ...            Rating – False        Tags: a, b, c
- *     Title: ...            URL Slug: ...         Writer: ...
- *
- * Labels differ from site to site (English, Hindi, Marathi, Bengali, Tamil,
- * Malayalam ...), several can share one line, and a separator can be ":" or
- * " – ". Rules only, no AI. Used by paste-cleaner.js, which fills the Fact
- * Check box from the result and removes the header lines it understood.
- *
- * parse( lines ) takes the plain text of the first paragraphs. It returns null
- * unless the very first line is a header line and at least two different
- * things were found. Otherwise:
- *   { count, fields: { claim, fact, rating, title, slug, tags, category, writer, synopsis },
- *     rating, factFromSynopsis }
- * count = how many leading lines were header lines (to be removed); rating =
- * one of our rating names or '' when the words aren't recognised.
- *
- * A line that is not a header line ends the header, so the article itself is
- * never touched. Plain JavaScript, no build step.
+ * parse( lines ) → null, or { count, fields, rating, factFromSynopsis }
+ *   count   how many leading lines are header lines (they leave the article)
+ *   fields  claim, fact, rating, title, slug, tags, category, writer, synopsis, excerpt, image
+ *   rating  one of our rating names, or '' when the word isn't known
+ * null unless the header starts on the first line, has a labelled line and gives at least
+ * two fields. The first line that isn't a header line ends it, so the article is never read.
  */
 ( function ( root ) {
     'use strict';

@@ -1,28 +1,8 @@
 <?php
 /**
- * ClaimReview structured data — the org-wide, one-stop fact-check schema.
- *
- * Google is phasing out ClaimReview *rich results* in Search, but the
- * markup is still consumed by Google's Fact Check Explorer Tool and by
- * other engines and AI systems, and it remains the Schema.org standard.
- * This implementation follows Google's current published spec exactly
- * (verified against developers.google.com, last updated Dec 2025) so it
- * validates cleanly in the Rich Results Test with no errors.
- *
- * Design decisions, mapped to Google's requirements:
- *  - Exactly ONE ClaimReview per page (Google requires this; a second one
- *    disqualifies the page). We guard with a static flag.
- *  - claimReviewed is the claim text, rating stripped, trimmed toward the
- *    ~75-char target Google recommends, without cutting mid-word.
- *  - reviewRating carries BOTH the numeric scale (1-5) and the textual
- *    alternateName — the text is what search shows.
- *  - url is the canonical permalink on this same domain (Google requires
- *    same domain / subdomain; no redirects or shorteners).
- *  - itemReviewed uses the modern Claim type with an `appearance` pointing
- *    at this article, plus datePublished.
- *  - author is the publishing site (dynamic per edition), name kept under
- *    Google's 100-char limit, with a url.
- *  - dateModified is included so corrected verdicts stay accurate.
+ * Google's fact-check data (ClaimReview) in the page head, following Google's
+ * published spec. Read by Fact Check Explorer, search engines and AI systems.
+ * One per page: a second one makes Google ignore both.
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -40,8 +20,7 @@ function fc_inject_claim_review_schema() {
     $post_id = get_the_ID();
     if ( ! $post_id ) return;
 
-    // Don't emit for noindexed posts (Yoast) — schema on a hidden page is
-    // pointless and can look like markup spam.
+    // Not for pages hidden from search (Yoast "noindex").
     $noindex = get_post_meta( $post_id, '_yoast_wpseo_meta-robots-noindex', true );
     if ( $noindex === '1' ) return;
 
@@ -58,31 +37,18 @@ function fc_inject_claim_review_schema() {
     $rating_value = fc_get_schema_rating_value( $rating );
     $permalink    = get_permalink( $post_id );
 
-    // claimReviewed: the claim itself, cleaned up but NOT cut short.
-    //
-    // The old ~75 character limit came from Google's guidance for the
-    // search result box, and that display feature has since been retired.
-    // What still reads this markup — Fact Check Explorer and AI systems —
-    // is better served by the whole claim than by half of one plus "...".
+    // The whole claim, not cut short (the old 75-character advice was for a retired search box).
     $claim_reviewed = $claim !== '' ? $claim : get_the_title( $post_id );
     $claim_reviewed = fc_trim_plain( $claim_reviewed, 300 );
 
-    // Publisher name, kept safely under Google's 100-char author limit.
+    // Google allows 100 characters for the publisher's name.
     $site_name = fc_trim_plain( get_bloginfo( 'name' ), 100 );
 
     $date_published = get_the_date( 'c', $post_id ); // ISO 8601 with offset
     $date_modified  = get_the_modified_date( 'c', $post_id );
 
-    // ── The claim being reviewed ──────────────────────────────────────────
-    //
-    // 'appearance' means "where the claim originally appeared" — the viral
-    // post, the video, the channel. It used to be filled with a link to this
-    // very article, which is a circle pointing at itself and tells Google
-    // nothing. It is now only included when an editor supplies a real source,
-    // and left out otherwise.
-    //
-    // 'author' is who made the claim. It was missing entirely, and it is the
-    // single most useful field here for Fact Check Explorer.
+    // The claim. 'appearance' (where it was first posted) and 'author' (who made it)
+    // only when the editor filled them in.
     $item_reviewed = [
         '@type'         => 'Claim',
         'datePublished' => $date_published,
@@ -112,19 +78,16 @@ function fc_inject_claim_review_schema() {
         'datePublished' => $date_published,
         'dateModified'  => $date_modified,
         'claimReviewed' => $claim_reviewed,
+        'itemReviewed'  => $item_reviewed,
 
-        // The claim being reviewed. Built below so the optional source
-        // fields are only included when an editor actually filled them in.
-        'itemReviewed' => $item_reviewed,
-
-        // Publisher of the FACT CHECK (this site/edition), not the claim.
+        // Who published the fact check (this site), not who made the claim.
         'author' => [
             '@type' => 'Organization',
             'name'  => $site_name,
             'url'   => home_url(),
         ],
 
-        // Both numeric scale and the human-readable verdict text.
+        // Google's 1–5 scale; the verdict text is what people see.
         'reviewRating' => [
             '@type'         => 'Rating',
             'ratingValue'   => $rating_value,
@@ -134,55 +97,26 @@ function fc_inject_claim_review_schema() {
         ],
     ];
 
-    /**
-     * Lets a site fine-tune the schema before output (e.g. add an image,
-     * a claim author, or firstAppearance) without editing the plugin.
-     */
+    /** Filter: change the data before it is printed. */
     $schema = apply_filters( 'fc_claimreview_schema', $schema, $post_id );
 
     $already_emitted = true;
 
-    /*
-     * Encoding flags, chosen for safety rather than tidiness:
-     *
-     * JSON_HEX_TAG turns < and > into < and >, and slashes are
-     * left escaped (JSON_UNESCAPED_SLASHES is deliberately NOT set). Between
-     * them, no value in this block can close the <script> tag it sits in,
-     * whatever it contains.
-     *
-     * Everything reaching $schema is already stripped of tags, but the
-     * fc_claimreview_schema filter above lets a site add its own values
-     * afterwards, and those have had no such treatment. This makes the
-     * output safe regardless.
-     *
-     * JSON_UNESCAPED_UNICODE stays so Hindi, Marathi and Khmer text remains
-     * readable rather than becoming a wall of escape sequences.
-     */
+    // JSON_HEX_TAG and escaped slashes: no value (even one added by the filter) can close the
+    // <script> tag. Unicode stays readable.
     echo "\n" . '<script type="application/ld+json">'
         . wp_json_encode( $schema, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG )
         . '</script>' . "\n";
 }
 
-/**
- * False for ratings that are not a verdict on a claim. Insight and News
- * articles explain or report; marking them as fact checks for Google would be
- * wrong (and Google's fact-check rules only cover rated claims).
- */
+/** False for Insight and News: they explain or report, they don't rate a claim. */
 function fc_claimreview_for_rating( $rating ) {
     /** Filter: ratings that never get fact-check data. */
     $skip = (array) apply_filters( 'fc_claimreview_skip_ratings', [ 'insight', 'news' ] );
     return ! in_array( strtolower( (string) $rating ), $skip, true );
 }
 
-/**
- * Maps each rating to Google's documented 1-5 truthfulness scale:
- * 1 = False, 2 = Mostly false, 3 = Half true, 4 = Mostly true, 5 = True.
- *
- * Satire and Altered are deliberately NOT lumped into 1 ("False") — they
- * are distinct verdicts. The numeric value is a best-fit on Google's scale
- * while the real meaning is always carried by alternateName (the verdict
- * text), which is what actually displays.
- */
+/** Our rating on Google's 1–5 scale (1 = False … 5 = True). The verdict text carries the real meaning. */
 function fc_get_schema_rating_value( $rating ) {
     $map = [
         'false'           => 1,
@@ -197,10 +131,7 @@ function fc_get_schema_rating_value( $rating ) {
     return $map[ strtolower( (string) $rating ) ] ?? 1;
 }
 
-/**
- * Collapses whitespace, strips tags, and hard-caps length. Used for any
- * value that goes into the schema so nothing malformed reaches output.
- */
+/** Plain text on one line, at most $max characters. */
 function fc_trim_plain( $text, $max ) {
     $text = wp_strip_all_tags( (string) $text );
     $text = preg_replace( '/\s+/', ' ', $text );
